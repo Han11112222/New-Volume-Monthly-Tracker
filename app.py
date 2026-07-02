@@ -21,11 +21,18 @@ st.markdown("""
 }
 .note-right { font-size: 12px; color: #555; text-align: right; margin-bottom: 4px; }
 table { border-collapse: collapse; width: 100%; font-size: 13px; margin-bottom: 12px; }
-th, td { border: 1px solid #aaa; padding: 7px 10px; text-align: center; white-space: nowrap; font-size: 13px; }
-td small { font-size: 12px; }
-td { color: #222 !important; }
-td b { color: #222 !important; }
-td small { color: #444 !important; }
+th, td { border: 1px solid #aaa; padding: 7px 10px; text-align: center;
+         white-space: nowrap; font-size: 13px;
+         color: #222 !important; vertical-align: middle; }
+td * { color: #222 !important; font-size: 13px !important; }
+td small { font-size: 12px !important; color: #444 !important; }
+td b { color: #222 !important; font-weight: 700; }
+.rate-red { color: #c0392b !important; font-weight: 700; }
+.rate-ok  { color: #1a7a1a !important; font-weight: 700; }
+.td-label { background: #dce6f5; font-weight: 700;
+            color: #1e3a6b !important; text-align: center !important; }
+.td-sub-label { background: #eef2fa; font-weight: 600;
+                color: #333 !important; text-align: center !important; }
 thead th { background: #1e3a6b; color: white; font-weight: 700; }
 .th-sub { background: #2d5fa8 !important; }
 .td-label { background: #dce6f5; font-weight: 700; }
