@@ -21,7 +21,8 @@ st.markdown("""
 }
 .note-right { font-size: 12px; color: #555; text-align: right; margin-bottom: 4px; }
 table { border-collapse: collapse; width: 100%; font-size: 13px; margin-bottom: 12px; }
-th, td { border: 1px solid #aaa; padding: 7px 10px; text-align: center; white-space: nowrap; }
+th, td { border: 1px solid #aaa; padding: 7px 10px; text-align: center; white-space: nowrap; font-size: 13px; }
+td small { font-size: 12px; }
 thead th { background: #1e3a6b; color: white; font-weight: 700; }
 .th-sub { background: #2d5fa8 !important; }
 .td-label { background: #dce6f5; font-weight: 700; }
@@ -497,31 +498,40 @@ else:
 
 st.markdown("---")
 
-# ── 출력 버튼 ──
+# ── 출력 버튼 (JavaScript로 작동) ──
 st.markdown("""
 <style>
 .print-btn-wrap { text-align: center; padding: 20px 0; }
 .print-btn {
-    display: inline-block;
     background: linear-gradient(135deg, #1e3a6b, #2d5fa8);
-    color: white !important; font-size: 16px; font-weight: 700;
+    color: white; font-size: 16px; font-weight: 700;
     padding: 14px 60px; border-radius: 8px; cursor: pointer;
-    border: none; text-decoration: none;
-    box-shadow: 0 4px 12px rgba(30,58,107,0.3);
-    transition: opacity 0.2s;
+    border: none; box-shadow: 0 4px 12px rgba(30,58,107,0.3);
 }
 .print-btn:hover { opacity: 0.85; }
-.print-guide {
-    font-size: 12px; color: #888; margin-top: 10px;
-}
+.print-guide { font-size: 12px; color: #888; margin-top: 10px; }
 @media print {
+    .stApp > header, .stSidebar, .stButton,
+    .stFileUploader, .stNumberInput, .stSelectbox,
+    .upload-box, [data-testid="stToolbar"],
     .print-btn-wrap { display: none !important; }
+    .report-header { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    table { page-break-inside: avoid; }
 }
 </style>
 <div class="print-btn-wrap">
     <button class="print-btn" onclick="window.print()">🖨️ 보고서 출력 / PDF 저장</button>
     <div class="print-guide">
-        Ctrl+P → 대상: <b>PDF로 저장</b> → 레이아웃: <b>가로</b> → 저장
+        버튼 클릭 후 → 대상: <b>PDF로 저장</b> → 레이아웃: <b>가로</b> → 저장
     </div>
 </div>
+<script>
+// Streamlit iframe 내에서 부모 윈도우 출력 트리거
+function triggerPrint() {
+    window.parent.postMessage({type: "print"}, "*");
+}
+window.addEventListener("message", function(e) {
+    if (e.data && e.data.type === "print") { window.print(); }
+});
+</script>
 """, unsafe_allow_html=True)
