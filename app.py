@@ -278,6 +278,16 @@ if 개발량_누실: 개발량_누실 /= 1000
 업무_a=act.get('업무용');  산업_a=act.get('산업용')
 열병_a=act.get('열병합');  합계_a=act.get('합계')
 
+# 누계 실적 (영업현황 row21: 공급전 총누계)
+공동_ca=safe(df_biz,21,2) if df_biz is not None else None
+단독_ca=safe(df_biz,21,3) if df_biz is not None else None
+소계_ca=safe(df_biz,21,4) if df_biz is not None else None
+일반_ca=safe(df_biz,21,5) if df_biz is not None else None
+업무_ca=safe(df_biz,21,6) if df_biz is not None else None
+산업_ca=safe(df_biz,21,7) if df_biz is not None else None
+열병_ca=safe(df_biz,21,8) if df_biz is not None else None
+합계_ca=safe(df_biz,21,9) if df_biz is not None else None
+
 총공_당실_v = 총공_당실 if 총공_당실 > 0 else None
 총공_누실_v = 총공_누실 if 총공_누실 > 0 else None
 입력필요 = '<span style="color:#aaa;font-size:11px;">입력필요</span>'
@@ -384,25 +394,36 @@ html2 = f"""
     </tr>
     <tr>
       <td class="td-label">실적</td>
-      <td>{fmt(공동_a)}</td><td>{fmt(단독_a)}</td><td>{fmt(소계_a)}</td>
-      <td>{fmt(일반_a)}</td><td>{fmt(업무_a)}</td>
-      <td>{fmt(산업_a)}</td><td>{fmt(열병_a)}</td><td>{fmt(합계_a)}</td>
+      <td>{fmt(공동_a)}<br><small style='color:#555'>({fmt(공동_ca)})</small></td>
+      <td>{fmt(단독_a)}<br><small style='color:#555'>({fmt(단독_ca)})</small></td>
+      <td>{fmt(소계_a)}<br><small style='color:#555'>({fmt(소계_ca)})</small></td>
+      <td>{fmt(일반_a)}<br><small style='color:#555'>({fmt(일반_ca)})</small></td>
+      <td>{fmt(업무_a)}<br><small style='color:#555'>({fmt(업무_ca)})</small></td>
+      <td>{fmt(산업_a)}<br><small style='color:#555'>({fmt(산업_ca)})</small></td>
+      <td>{fmt(열병_a)}<br><small style='color:#555'>({fmt(열병_ca)})</small></td>
+      <td>{fmt(합계_a)}<br><small style='color:#555'>({fmt(합계_ca)})</small></td>
     </tr>
     <tr>
       <td class="td-label">달성률</td>
-      <td>{rate_html(공동_a,공동_p)}</td><td>{rate_html(단독_a,단독_p)}</td>
-      <td>{rate_html(소계_a,소계_p)}</td>
-      <td>{rate_html(일반_a,일반_p)}</td><td>{rate_html(업무_a,업무_p)}</td>
-      <td>{rate_html(산업_a,산업_p)}</td><td>{rate_html(열병_a,열병_p)}</td>
-      <td>{rate_html(합계_a,합계_p)}</td>
+      <td>{rate_html(공동_a,공동_p)}<br><small style='color:#888'>({rate_html(공동_ca,공동_cp)})</small></td>
+      <td>{rate_html(단독_a,단독_p)}<br><small style='color:#888'>({rate_html(단독_ca,단독_cp)})</small></td>
+      <td>{rate_html(소계_a,소계_p)}<br><small style='color:#888'>({rate_html(소계_ca,소계_cp)})</small></td>
+      <td>{rate_html(일반_a,일반_p)}<br><small style='color:#888'>({rate_html(일반_ca,일반_cp)})</small></td>
+      <td>{rate_html(업무_a,업무_p)}<br><small style='color:#888'>({rate_html(업무_ca,업무_cp)})</small></td>
+      <td>{rate_html(산업_a,산업_p)}<br><small style='color:#888'>({rate_html(산업_ca,산업_cp)})</small></td>
+      <td>{rate_html(열병_a,열병_p)}<br><small style='color:#888'>({rate_html(열병_ca,열병_cp)})</small></td>
+      <td>{rate_html(합계_a,합계_p)}<br><small style='color:#888'>({rate_html(합계_ca,합계_cp)})</small></td>
     </tr>
     <tr>
       <td class="td-label">증감</td>
-      <td>{d_inc(공동_a,공동_p)}</td><td>{d_inc(단독_a,단독_p)}</td>
-      <td>{d_inc(소계_a,소계_p)}</td>
-      <td>{d_inc(일반_a,일반_p)}</td><td>{d_inc(업무_a,업무_p)}</td>
-      <td>{d_inc(산업_a,산업_p)}</td><td>{d_inc(열병_a,열병_p)}</td>
-      <td>{d_inc(합계_a,합계_p)}</td>
+      <td>{d_inc(공동_a,공동_p)}<br><small style='color:#888'>({d_inc(공동_ca,공동_cp)})</small></td>
+      <td>{d_inc(단독_a,단독_p)}<br><small style='color:#888'>({d_inc(단독_ca,단독_cp)})</small></td>
+      <td>{d_inc(소계_a,소계_p)}<br><small style='color:#888'>({d_inc(소계_ca,소계_cp)})</small></td>
+      <td>{d_inc(일반_a,일반_p)}<br><small style='color:#888'>({d_inc(일반_ca,일반_cp)})</small></td>
+      <td>{d_inc(업무_a,업무_p)}<br><small style='color:#888'>({d_inc(업무_ca,업무_cp)})</small></td>
+      <td>{d_inc(산업_a,산업_p)}<br><small style='color:#888'>({d_inc(산업_ca,산업_cp)})</small></td>
+      <td>{d_inc(열병_a,열병_p)}<br><small style='color:#888'>({d_inc(열병_ca,열병_cp)})</small></td>
+      <td>{d_inc(합계_a,합계_p)}<br><small style='color:#888'>({d_inc(합계_ca,합계_cp)})</small></td>
     </tr>
   </tbody>
 </table>
