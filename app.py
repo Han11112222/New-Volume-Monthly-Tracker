@@ -23,6 +23,9 @@ st.markdown("""
 table { border-collapse: collapse; width: 100%; font-size: 13px; margin-bottom: 12px; }
 th, td { border: 1px solid #aaa; padding: 7px 10px; text-align: center; white-space: nowrap; font-size: 13px; }
 td small { font-size: 12px; }
+td { color: #222 !important; }
+td b { color: #222 !important; }
+td small { color: #444 !important; }
 thead th { background: #1e3a6b; color: white; font-weight: 700; }
 .th-sub { background: #2d5fa8 !important; }
 .td-label { background: #dce6f5; font-weight: 700; }
