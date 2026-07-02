@@ -2,389 +2,401 @@ import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-import glob
-import os
 import re
 
 st.set_page_config(layout="wide", page_title="마케팅본부 월간 보고서")
 
 st.markdown("""
 <style>
-    body { font-family: 'Malgun Gothic', sans-serif; }
     .report-title {
         background: linear-gradient(135deg, #1e3a5f 0%, #2d6a9f 100%);
-        color: white; padding: 20px 30px; border-radius: 8px;
-        font-size: 26px; font-weight: 800; margin-bottom: 24px;
-    }
-    .section-box {
-        border: 2px solid #2d6a9f; border-radius: 8px;
-        padding: 16px; margin-bottom: 20px;
+        color: white; padding: 18px 28px; border-radius: 8px;
+        font-size: 24px; font-weight: 800; margin-bottom: 20px;
     }
     .section-title {
         background-color: #2d6a9f; color: white;
         padding: 6px 16px; border-radius: 4px;
-        font-size: 15px; font-weight: 700; margin-bottom: 12px;
+        font-size: 15px; font-weight: 700; margin: 16px 0 10px 0;
         display: inline-block;
+    }
+    .input-section {
+        background: #f8faff; border: 1px solid #c5d8f5;
+        border-radius: 8px; padding: 16px; margin-bottom: 16px;
     }
     .metric-card {
         background: #f0f4fa; border-radius: 6px;
-        padding: 12px 16px; text-align: center;
-        border-left: 4px solid #2d6a9f;
+        padding: 12px; text-align: center;
+        border-left: 4px solid #2d6a9f; margin-bottom: 8px;
     }
-    .metric-label { font-size: 12px; color: #666; margin-bottom: 4px; }
+    .metric-label { font-size: 12px; color: #666; }
     .metric-value { font-size: 20px; font-weight: 800; color: #1e3a5f; }
-    .metric-rate { font-size: 13px; color: #888; }
-    .table-header {
-        background-color: #2d6a9f; color: white;
-        font-weight: 700; text-align: center;
+    .metric-rate  { font-size: 12px; color: #888; }
+    .new-industry {
+        background: #fff3cd; border: 1px solid #ffc107;
+        border-radius: 6px; padding: 10px 14px; margin: 6px 0;
+        font-size: 13px;
     }
-    .rate-good { color: #1a7a1a; font-weight: 700; }
-    .rate-bad  { color: #c0392b; font-weight: 700; }
     .upload-guide {
         background: #fff8e1; border: 1px solid #ffc107;
-        border-radius: 6px; padding: 12px 16px; margin-bottom: 16px;
-        font-size: 13px;
+        border-radius: 6px; padding: 10px 14px; margin-bottom: 12px; font-size: 13px;
     }
 </style>
 """, unsafe_allow_html=True)
 
-# ── 헬퍼 ──────────────────────────────────────────────
-def fmt_num(v, decimals=0):
-    if v is None or (isinstance(v, float) and pd.isna(v)):
-        return "-"
-    try:
-        if decimals == 0:
-            return f"{int(round(float(v))):,}"
-        return f"{float(v):,.{decimals}f}"
-    except:
-        return str(v)
-
-def fmt_pct(v):
-    if v is None or (isinstance(v, float) and pd.isna(v)):
-        return "-"
+# ── 헬퍼 ──────────────────────────────────────
+def fmt(v, dec=0):
+    if v is None or (isinstance(v, float) and pd.isna(v)): return "-"
     try:
         f = float(v)
-        if abs(f) > 5:   # 이미 % 단위
-            return f"{f:.1f}%"
-        return f"{f*100:.1f}%"
-    except:
-        return str(v)
+        return f"{f:,.{dec}f}" if dec > 0 else f"{int(round(f)):,}"
+    except: return str(v)
 
-def rate_color(v):
+def pct(v):
+    if v is None or (isinstance(v, float) and pd.isna(v)): return "-"
     try:
         f = float(v)
-        val = f * 100 if abs(f) <= 5 else f
-        return "rate-good" if val >= 100 else "rate-bad"
-    except:
-        return ""
+        return f"{f*100:.1f}%" if abs(f) <= 5 else f"{f:.1f}%"
+    except: return str(v)
 
-def safe(df, row, col):
+def safe(df, r, c):
     try:
-        v = df.iloc[row, col]
+        v = df.iloc[r, c]
         return None if pd.isna(v) else v
-    except:
-        return None
+    except: return None
 
-# ── 데이터 읽기 ────────────────────────────────────────
-def load_report(file):
-    """영업현황 보고 파일 → 주요 지표 추출"""
-    xl = pd.read_excel(file, sheet_name='(회의자료 입력용)공급전 및 공급량 현황',
-                       header=None)
-    # row 6=신규개발전, 7=폐전, 8=순증가, 9=신규개발량, 10=총공급량
-    # col: 2=연간계획, 3=당월계획, 4=당월실적, 5=달성률, 6=누계계획, 7=누계실적, 8=누계달성률, 9=익월계획
-    rows = {
-        '신규개발전': 6, '폐전': 7, '순증가': 8,
-        '신규개발량': 9, '총공급량': 10
-    }
-    cols = {
-        '연간계획': 2, '당월계획': 3, '당월실적': 4, '달성률': 5,
-        '누계계획': 6, '누계실적': 7, '누계달성률': 8, '익월계획': 9
-    }
-    data = {}
-    for rname, ri in rows.items():
-        data[rname] = {cname: safe(xl, ri, ci) for cname, ci in cols.items()}
+# ── 구글 스프레드시트 로드 ──────────────────────
+SHEET_ID = '16IUVv9kFPWxu6xVEmwXXvlvJEKrZSdjzdsPdhGOO5BY'
+GID      = '1975335172'
 
-    # 신규개발전 상세 (당월) — row14~17 / col15~22  (N~W)
-    # 행: 계획=6, 실적=7, 달성률=8, 증감=9  /  col: 공동=15, 단독=16, 소계=17, 일반=18, 업무=19, 산업=20, 열병합=21, 합계=22
-    detail_rows = {'계획': 6, '실적': 7, '달성률': 8, '증감': 9}
-    detail_cols = {'공동주택': 15, '단독주택': 16, '소계': 17,
-                   '일반용': 18, '업무용': 19, '산업용': 20, '열병합': 21, '합계': 22}
-    detail = {}
-    for rn, ri in detail_rows.items():
-        detail[rn] = {cn: safe(xl, ri, ci) for cn, ci in detail_cols.items()}
+@st.cache_data(ttl=300)
+def load_gsheet():
+    url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv&gid={GID}"
+    try:
+        df = pd.read_csv(url, header=None)
+        return df, None
+    except Exception as e:
+        return None, str(e)
 
-    # 누계기준 신규개발전 상세 — row26~33
-    cum_rows = {'계획': 26, '실적': 28, '달성률': 30, '증감': 32}
-    cum = {}
-    for rn, ri in cum_rows.items():
-        cum[rn] = {cn: safe(xl, ri, ci) for cn, ci in detail_cols.items()}
+# ── 영업일보 xlsm 로드 ─────────────────────────
+def load_xlsm(file):
+    sheets = {}
+    names = ['공급전 계획(2026년)', '공급량 계획_MJ(2026년)', '영업현황']
+    for s in names:
+        try:
+            sheets[s] = pd.read_excel(file, sheet_name=s, header=None, engine='openpyxl')
+        except: pass
+    return sheets
 
-    # 월별 공급량 계획 (row38) / 누계 (row39)
-    monthly_plan = [safe(xl, 38, c) for c in range(1, 13)]
-    monthly_cum  = [safe(xl, 39, c) for c in range(1, 13)]
-
-    # 보고 월 추출 (파일명에서)
-    fname = file.name if hasattr(file, 'name') else str(file)
-    m = re.search(r'(\d{6})', fname)
-    yyyymm = m.group(1) if m else "202606"
-    month = int(yyyymm[4:6])
-
-    return data, detail, cum, monthly_plan, monthly_cum, month, yyyymm
-
-
-def load_monthly_plan(file):
-    """신규개발량 파일 → 공급전 월별 계획/실적"""
-    xl = pd.read_excel(file, sheet_name='3_1. 개발량 계획', header=None)
-    months = list(range(1, 13))
-    categories = {
-        '공동주택': 2, '단독주택': 4, '가정용': 6,
-        '일반용': 7, '업무용': 9, '산업용': 11, '열병합용': 13
-    }
+def parse_supply_plan(sheets):
+    """공급전 계획 시트 → 월별 계획 추출"""
+    df = sheets.get('공급전 계획(2026년)')
+    if df is None: return {}
+    # row9: 합계 계획, col4~15: 1~12월
     plan = {}
-    for cat, ri in categories.items():
-        plan[cat] = [safe(xl, ri, c) for c in range(2, 14)]
+    cat_rows = {
+        '가정용': 4, '일반용': 5, '업무용': 6,
+        '산업용': 7, '열병합용': 8, '합계': 9
+    }
+    for cat, ri in cat_rows.items():
+        plan[cat] = [safe(df, ri, c) for c in range(4, 16)]
+    return plan
 
-    xl2 = pd.read_excel(file, sheet_name='3_2. 개발량 실적', header=None)
+def parse_supply_volume_plan(sheets):
+    """공급량 계획 시트 → 월별 공급량 계획(GJ) 추출"""
+    df = sheets.get('공급량 계획_MJ(2026년)')
+    if df is None: return [], []
+    # row5: 월 공급량 계획(MJ), col3~14: 1~12월  → GJ = MJ/1000
+    plan_mj = [safe(df, 5, c) for c in range(3, 15)]
+    plan_gj = [v/1000 if v else None for v in plan_mj]
+    return plan_gj
+
+def parse_actual_supply(sheets):
+    """영업현황 시트 → 신규개발전 당월 실적"""
+    df = sheets.get('영업현황')
+    if df is None: return {}
+    # row25: 실적, col2~9: 공동, 단독, 계, 영업용, 업무용, 산업용, 열병합, 총계
+    cats = ['공동주택', '단독주택', '소계', '일반용', '업무용', '산업용', '열병합', '합계']
     actual = {}
-    for cat, ri in categories.items():
-        actual[cat] = [safe(xl2, ri, c) for c in range(2, 14)]
+    for i, cat in enumerate(cats):
+        actual[cat] = safe(df, 25, i+2)
+    # row26: 목표
+    plan_row = {}
+    for i, cat in enumerate(cats):
+        plan_row[cat] = safe(df, 26, i+2)
+    return actual, plan_row
 
-    return plan, actual, months
-
-
-# ── UI ────────────────────────────────────────────────
+# ════════════════════════════════════════════════
+# UI 시작
+# ════════════════════════════════════════════════
 st.markdown('<div class="report-title">📊 마케팅본부 _ 월간 영업현황 보고서</div>',
             unsafe_allow_html=True)
 
-# 파일 업로드
-st.markdown('<div class="upload-guide">📁 매월 초 아래 파일을 업로드하면 자동으로 보고서가 생성됩니다.</div>',
+# ── 파일 업로드 ──
+st.markdown('<div class="upload-guide">📁 영업일보(xlsm) 파일만 업로드하면 자동으로 보고서가 생성됩니다.</div>',
             unsafe_allow_html=True)
 
-col_u1, col_u2 = st.columns(2)
-with col_u1:
-    f_report = st.file_uploader(
-        "① 영업현황 보고 파일 (new_1_...xlsx)",
-        type=['xlsx'], key='report')
-with col_u2:
-    f_devplan = st.file_uploader(
-        "② 신규개발량 파일 (new_2_...xlsx)",
-        type=['xlsx'], key='devplan')
+f_xlsm = st.file_uploader("📎 영업일보 파일 업로드 (영업일보_월간_YYYYMM.xlsm)",
+                            type=['xlsm', 'xlsx'], key='xlsm')
 
-if not f_report:
-    st.info("👆 영업현황 보고 파일을 업로드해주세요.")
+# ── 수기 입력 영역 ──
+st.markdown('<div class="section-title">✏️ 수기 입력 항목</div>', unsafe_allow_html=True)
+
+with st.container():
+    st.markdown('<div class="input-section">', unsafe_allow_html=True)
+    col_m, col_y = st.columns([1, 1])
+    with col_m:
+        input_month = st.selectbox("보고 월", list(range(1, 13)), index=5)
+    with col_y:
+        input_year = st.number_input("보고 연도", value=2026, step=1)
+
+    st.markdown("**📦 총공급량 실적 입력 (고객지원시스템 확인값)**")
+    col1, col2 = st.columns(2)
+    with col1:
+        total_supply_actual = st.number_input(
+            f"{input_month}월 총공급량 당월 실적 (GJ)", 
+            value=0, step=1000, format="%d")
+    with col2:
+        total_supply_cum = st.number_input(
+            f"{input_month}월 총공급량 누계 실적 (GJ)",
+            value=0, step=1000, format="%d")
+
+    st.markdown("**🏭 산업용 신규 업체 (해당 월에 신규 발생 시 입력)**")
+    col_a, col_b, col_c = st.columns([2, 1, 1])
+    with col_a:
+        new_industry_name = st.text_input("업체명", placeholder="예: ㈜대성에너지 신규")
+    with col_b:
+        new_industry_m3 = st.number_input("월사용예정량 (m³)", value=0, step=100)
+    with col_c:
+        new_industry_kcal = st.number_input("열량 환산값 (GJ)", value=0.0, step=0.1, format="%.1f")
+    st.markdown('</div>', unsafe_allow_html=True)
+
+if not f_xlsm:
+    st.info("👆 영업일보 파일을 업로드해주세요.")
     st.stop()
 
 # ── 데이터 로드 ──
-data, detail, cum, monthly_plan, monthly_cum, month, yyyymm = load_report(f_report)
-year = int(yyyymm[:4])
+sheets = load_xlsm(f_xlsm)
+supply_plan = parse_supply_plan(sheets)
+vol_plan_gj = parse_supply_volume_plan(sheets)
+actual_supply, plan_supply = parse_actual_supply(sheets)
 
-plan_data, actual_data, months = None, None, None
-if f_devplan:
-    try:
-        plan_data, actual_data, months = load_monthly_plan(f_devplan)
-    except:
-        pass
+# 구글 스프레드시트 (산업용 업체 목록)
+gsheet_df, gsheet_err = load_gsheet()
 
-month_kor = f"{year}년 {month}월"
+month_kor = f"{input_year}년 {input_month}월"
+months_label = [f"{i}월" for i in range(1, 13)]
+
 st.markdown(f"### 📅 보고 기준: **{month_kor}**")
 
 # ════════════════════════════════════════════════
-# 1. 공급전 및 공급량 현황 요약
+# 1. 공급전 및 공급량 현황
 # ════════════════════════════════════════════════
-st.markdown('<div class="section-title">📋 공급전 및 공급량 현황</div>', unsafe_allow_html=True)
+st.markdown('<div class="section-title">📋 공급전 및 공급량 현황</div>',
+            unsafe_allow_html=True)
 
-# 상단 메트릭 카드
-mc = st.columns(5)
-items = [
-    ("신규개발전", "신규개발전", "전"),
-    ("폐전", "폐전", "전"),
-    ("순증가", "순증가", "전"),
-    ("신규개발량", "신규개발량", "GJ"),
-    ("총공급량", "총공급량", "GJ"),
+# 신규개발전 당월 실적/계획
+act = actual_supply or {}
+pln = plan_supply  or {}
+
+dev_actual  = act.get('합계', 0) or 0
+dev_plan    = pln.get('합계', 0) or 0
+dev_rate    = dev_actual / dev_plan * 100 if dev_plan else 0
+
+# 누계 계획 (공급전 계획 시트에서)
+df_plan = sheets.get('공급전 계획(2026년)')
+cum_plan = 0
+if df_plan is not None:
+    cum_plan_vals = [safe(df_plan, 12, c) for c in range(4, 4+input_month)]
+    cum_plan = sum(v for v in cum_plan_vals if v) 
+
+# 메트릭 카드
+mc = st.columns(4)
+metrics = [
+    ("신규개발전 당월 실적", fmt(dev_actual), f"계획 {fmt(dev_plan)} | 달성 {dev_rate:.1f}%", "전"),
+    ("신규개발전 누계 계획", fmt(cum_plan), "", "전"),
+    ("총공급량 당월 실적", fmt(total_supply_actual), "수기 입력값", "GJ"),
+    ("총공급량 누계 실적", fmt(total_supply_cum), "수기 입력값", "GJ"),
 ]
-for i, (label, key, unit) in enumerate(items):
-    d = data.get(key, {})
-    실적 = d.get('당월실적')
-    달성 = d.get('달성률')
-    누계 = d.get('누계실적')
+for i, (label, val, sub, unit) in enumerate(metrics):
     mc[i].markdown(f"""
     <div class="metric-card">
         <div class="metric-label">{label} ({unit})</div>
-        <div class="metric-value">{fmt_num(실적)}</div>
-        <div class="metric-rate">당월 달성 {fmt_pct(달성)} | 누계 {fmt_num(누계)}</div>
+        <div class="metric-value">{val}</div>
+        <div class="metric-rate">{sub}</div>
     </div>""", unsafe_allow_html=True)
 
 st.markdown("<br>", unsafe_allow_html=True)
 
-# 상세 표
-def render_summary_table(data_dict, title_prefix=""):
-    cols_def = ['구분', '연간계획', f'{month}월 계획', f'{month}월 실적', '달성률', '누계 계획', '누계 실적', '누계 달성률']
-    rows_out = []
-    for key in ['신규개발전', '폐전', '순증가', '신규개발량', '총공급량']:
-        d = data_dict.get(key, {})
-        달성 = d.get('달성률')
-        누달 = d.get('누계달성률')
-        rows_out.append({
-            '구분': key,
-            '연간계획': fmt_num(d.get('연간계획')),
-            f'{month}월 계획': fmt_num(d.get('당월계획')),
-            f'{month}월 실적': fmt_num(d.get('당월실적')),
-            '달성률': fmt_pct(달성),
-            '누계 계획': fmt_num(d.get('누계계획')),
-            '누계 실적': fmt_num(d.get('누계실적')),
-            '누계 달성률': fmt_pct(누달),
-        })
-    df_out = pd.DataFrame(rows_out)
-    st.dataframe(df_out, use_container_width=True, hide_index=True)
+# 신규개발전 상세 표
+st.markdown(f"**{input_month}월 신규개발전 상세 현황** (단위: 전)")
+cats = ['공동주택', '단독주택', '소계', '일반용', '업무용', '산업용', '열병합', '합계']
+rows_detail = []
+for label, d in [('계획', pln), ('실적', act)]:
+    row = {'구분': label}
+    for c in cats:
+        row[c] = fmt(d.get(c))
+    rows_detail.append(row)
+# 달성률
+rate_row = {'구분': '달성률'}
+for c in cats:
+    try:
+        r = float(act.get(c) or 0) / float(pln.get(c) or 1) * 100
+        rate_row[c] = f"{r:.1f}%"
+    except: rate_row[c] = "-"
+rows_detail.append(rate_row)
+# 증감
+inc_row = {'구분': '증감'}
+for c in cats:
+    try:
+        inc_row[c] = fmt((act.get(c) or 0) - (pln.get(c) or 0))
+    except: inc_row[c] = "-"
+rows_detail.append(inc_row)
 
-render_summary_table(data)
+st.dataframe(pd.DataFrame(rows_detail), use_container_width=True, hide_index=True)
 
 # ════════════════════════════════════════════════
-# 2. 신규개발전 상세 현황 (당월 / 누계)
+# 2. 산업용 신규 업체 현황
 # ════════════════════════════════════════════════
-st.markdown('<div class="section-title">📋 신규개발전 상세 현황</div>', unsafe_allow_html=True)
+st.markdown('<div class="section-title">🏭 산업용 신규 업체 현황</div>',
+            unsafe_allow_html=True)
 
-tab1, tab2 = st.tabs([f"📌 {month}월 (당월)", "📌 누계 기준"])
+col_gs, col_new = st.columns([2, 1])
 
-def render_detail_table(d, month_label):
-    cats = ['공동주택', '단독주택', '소계', '일반용', '업무용', '산업용', '열병합', '합계']
-    rows = []
-    for rn in ['계획', '실적', '달성률', '증감']:
-        row = {'구분': rn}
-        for cat in cats:
-            v = d.get(rn, {}).get(cat)
-            if rn == '달성률':
-                row[cat] = fmt_pct(v)
-            elif rn == '증감':
-                try:
-                    row[cat] = fmt_num(v) if v is not None else "-"
-                except:
-                    row[cat] = "-"
+with col_gs:
+    st.markdown("**구글 스프레드시트 산업용 업체 목록**")
+    if gsheet_err:
+        st.warning(f"스프레드시트 접근 오류: {gsheet_err}\n\n스프레드시트 공유 설정을 '링크가 있는 모든 사용자'로 변경해주세요.")
+    elif gsheet_df is not None:
+        # 업체명이 포함된 행 필터링 (산업용 관련)
+        try:
+            # 헤더 찾기
+            header_idx = -1
+            for i, row in gsheet_df.iterrows():
+                row_str = " ".join([str(v) for v in row if pd.notna(v)])
+                if "업체" in row_str or "고객" in row_str or "산업" in row_str:
+                    header_idx = i
+                    break
+            if header_idx >= 0:
+                df_show = pd.read_csv(
+                    f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv&gid={GID}",
+                    header=header_idx)
+                st.dataframe(df_show.head(20), use_container_width=True)
             else:
-                row[cat] = fmt_num(v)
-        rows.append(row)
-    st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+                st.dataframe(gsheet_df.head(15), use_container_width=True)
+        except:
+            st.dataframe(gsheet_df.head(15), use_container_width=True)
 
-with tab1:
-    render_detail_table(detail, f"{month}월")
-with tab2:
-    render_detail_table(cum, "누계")
+with col_new:
+    st.markdown("**이번 달 신규 발생 업체**")
+    if new_industry_name:
+        st.markdown(f"""
+        <div class="new-industry">
+            🆕 <b>{new_industry_name}</b><br>
+            월사용예정량: <b>{fmt(new_industry_m3)} m³</b><br>
+            열량 환산: <b>{fmt(new_industry_kcal, 1)} GJ</b>
+        </div>""", unsafe_allow_html=True)
+    else:
+        st.info("이번 달 신규 산업용 업체 없음")
 
 # ════════════════════════════════════════════════
 # 3. 월별 그래프
 # ════════════════════════════════════════════════
-st.markdown('<div class="section-title">📈 월별 공급량 계획 vs 실적</div>', unsafe_allow_html=True)
+st.markdown('<div class="section-title">📈 월별 계획 vs 실적 그래프</div>',
+            unsafe_allow_html=True)
 
-month_labels = [f"{i}월" for i in range(1, 13)]
+tab1, tab2 = st.tabs(["📦 총공급량", "👥 신규개발전 카테고리별"])
 
-# 공급량 계획/실적 그래프
-fig1 = go.Figure()
-plan_vals = [v if v is not None else 0 for v in monthly_plan]
-# 실적은 현재 월까지만
-actual_vals = [0] * 12
-# 영업일보에서 실제 월별 실적 가져오기 (현재는 누계에서 역산)
-for i in range(month):
-    if i == 0:
-        actual_vals[i] = monthly_cum[i] if monthly_cum[i] else 0
-    else:
-        prev = monthly_cum[i-1] if monthly_cum[i-1] else 0
-        curr = monthly_cum[i] if monthly_cum[i] else 0
-        actual_vals[i] = curr - prev
+with tab1:
+    plan_vals = [v if v else 0 for v in vol_plan_gj]
+    fig = go.Figure()
+    fig.add_trace(go.Bar(
+        x=months_label, y=plan_vals,
+        name='계획(GJ)', marker_color='#2d6a9f', opacity=0.7
+    ))
+    if total_supply_actual > 0:
+        actual_vals = [0]*12
+        actual_vals[input_month-1] = total_supply_actual
+        fig.add_trace(go.Bar(
+            x=[months_label[input_month-1]],
+            y=[total_supply_actual],
+            name='실적(GJ)', marker_color='#e74c3c'
+        ))
+    fig.update_layout(
+        title=f"{input_year}년 월별 총공급량 계획 vs 실적",
+        barmode='group', height=350,
+        yaxis_title="공급량 (GJ)",
+        plot_bgcolor='white',
+        yaxis=dict(gridcolor='#eee'),
+        legend=dict(orientation='h', y=1.1)
+    )
+    st.plotly_chart(fig, use_container_width=True)
 
-fig1.add_trace(go.Bar(
-    x=month_labels, y=plan_vals,
-    name='계획', marker_color='#2d6a9f', opacity=0.7
-))
-fig1.add_trace(go.Bar(
-    x=month_labels[:month],
-    y=actual_vals[:month],
-    name='실적', marker_color='#e74c3c', opacity=0.9
-))
-fig1.update_layout(
-    title=f"{year}년 월별 공급량 계획 vs 실적 (GJ)",
-    barmode='group', height=380,
-    legend=dict(orientation='h', y=1.1),
-    yaxis_title="공급량 (GJ)",
-    plot_bgcolor='white',
-    yaxis=dict(gridcolor='#eee')
-)
-st.plotly_chart(fig1, use_container_width=True)
-
-# 공급전 계획/실적 그래프 (신규개발량 파일 있을 때)
-if plan_data and actual_data:
-    st.markdown('<div class="section-title">📈 신규개발전 계획 vs 실적 (카테고리별)</div>',
-                unsafe_allow_html=True)
-
-    cats_show = ['가정용', '일반용', '업무용', '산업용']
-    colors = ['#2d6a9f', '#e74c3c', '#27ae60', '#f39c12']
-
-    fig2 = make_subplots(rows=2, cols=2,
-                         subplot_titles=cats_show,
-                         shared_xaxes=False)
+with tab2:
+    cats_graph = ['가정용', '일반용', '업무용', '산업용']
+    colors = ['#2d6a9f', '#27ae60', '#f39c12', '#e74c3c']
+    fig2 = make_subplots(rows=2, cols=2, subplot_titles=cats_graph)
     positions = [(1,1),(1,2),(2,1),(2,2)]
-
-    for idx, (cat, pos, color) in enumerate(zip(cats_show, positions, colors)):
-        p_vals = [v if v is not None else 0 for v in (plan_data.get(cat) or [0]*12)]
-        a_vals = [v if v is not None else 0 for v in (actual_data.get(cat) or [0]*12)]
-
+    for idx, (cat, pos, color) in enumerate(zip(cats_graph, positions, colors)):
+        p_vals = [v if v else 0 for v in (supply_plan.get(cat) or [0]*12)]
         fig2.add_trace(go.Scatter(
-            x=month_labels, y=p_vals,
-            name=f'{cat} 계획', line=dict(color=color, dash='dash'),
-            showlegend=(idx == 0)
+            x=months_label, y=p_vals,
+            name=f'{cat} 계획',
+            line=dict(color=color, dash='dash'),
+            showlegend=(idx==0)
         ), row=pos[0], col=pos[1])
-        fig2.add_trace(go.Scatter(
-            x=month_labels[:month], y=a_vals[:month],
-            name=f'{cat} 실적', line=dict(color=color),
-            showlegend=(idx == 0)
-        ), row=pos[0], col=pos[1])
-
-    fig2.update_layout(height=500, title=f"{year}년 신규개발전 카테고리별 계획 vs 실적 (전)",
-                       plot_bgcolor='white')
+        # 실적 (현재 월만)
+        a_val = act.get(cat) if cat in ['일반용','업무용','산업용'] else act.get('소계') if cat=='가정용' else None
+        if a_val:
+            fig2.add_trace(go.Scatter(
+                x=[months_label[input_month-1]],
+                y=[float(a_val)],
+                mode='markers',
+                name=f'{cat} 실적',
+                marker=dict(color=color, size=10),
+                showlegend=(idx==0)
+            ), row=pos[0], col=pos[1])
+    fig2.update_layout(
+        height=480,
+        title=f"{input_year}년 신규개발전 카테고리별 계획 추이",
+        plot_bgcolor='white'
+    )
     st.plotly_chart(fig2, use_container_width=True)
 
-    # 당월 달성률 막대
-    st.markdown('<div class="section-title">📊 당월 신규개발전 달성률</div>', unsafe_allow_html=True)
-    cats_all = ['공동주택', '단독주택', '가정용', '일반용', '업무용', '산업용', '열병합용']
-    rate_vals = []
-    for cat in cats_all:
-        p = (plan_data.get(cat) or [None]*12)[month-1]
-        a = (actual_data.get(cat) or [None]*12)[month-1]
-        try:
-            rate_vals.append(round(float(a)/float(p)*100, 1) if p and float(p) != 0 else 0)
-        except:
-            rate_vals.append(0)
+# 달성률 막대
+st.markdown(f"**{input_month}월 신규개발전 달성률**")
+rate_cats = ['공동주택', '단독주택', '일반용', '업무용', '산업용', '열병합', '합계']
+rate_vals = []
+for cat in rate_cats:
+    try:
+        r = float(act.get(cat) or 0) / float(pln.get(cat) or 1) * 100
+        rate_vals.append(round(r, 1))
+    except: rate_vals.append(0)
 
-    bar_colors = ['#27ae60' if r >= 100 else '#e74c3c' for r in rate_vals]
-    fig3 = go.Figure(go.Bar(
-        x=cats_all, y=rate_vals,
-        marker_color=bar_colors,
-        text=[f"{r}%" for r in rate_vals],
-        textposition='outside'
-    ))
-    fig3.add_hline(y=100, line_dash='dash', line_color='#2d6a9f', annotation_text='목표 100%')
-    fig3.update_layout(
-        height=350, yaxis_title="달성률 (%)",
-        title=f"{month}월 신규개발전 달성률",
-        plot_bgcolor='white',
-        yaxis=dict(gridcolor='#eee', range=[0, max(rate_vals + [120])])
-    )
-    st.plotly_chart(fig3, use_container_width=True)
+fig3 = go.Figure(go.Bar(
+    x=rate_cats, y=rate_vals,
+    marker_color=['#27ae60' if r >= 100 else '#e74c3c' for r in rate_vals],
+    text=[f"{r}%" for r in rate_vals],
+    textposition='outside'
+))
+fig3.add_hline(y=100, line_dash='dash', line_color='#2d6a9f', annotation_text='목표 100%')
+fig3.update_layout(
+    height=320, yaxis_title="달성률 (%)",
+    plot_bgcolor='white',
+    yaxis=dict(gridcolor='#eee', range=[0, max(rate_vals + [120]) + 20])
+)
+st.plotly_chart(fig3, use_container_width=True)
 
 # ════════════════════════════════════════════════
-# 4. PDF 출력 버튼
+# 4. PDF 출력
 # ════════════════════════════════════════════════
 st.markdown("---")
 st.markdown("""
-<div style='text-align:center; padding: 20px;'>
-    <p style='color:#555; margin-bottom:8px;'>🖨️ 화면을 PDF로 출력하려면:</p>
-    <p style='color:#888; font-size:13px;'>브라우저 메뉴 → 인쇄 (Ctrl+P) → 대상: PDF로 저장 → 레이아웃: 가로 → 저장</p>
+<div style='text-align:center; padding:16px;'>
+    <p style='color:#555; margin-bottom:6px;'>🖨️ PDF로 출력하려면:</p>
+    <p style='color:#888; font-size:13px;'>
+        브라우저 메뉴 → 인쇄 (Ctrl+P) → 대상: <b>PDF로 저장</b> → 레이아웃: <b>가로</b> → 저장
+    </p>
 </div>
 """, unsafe_allow_html=True)
-
-col_pdf = st.columns([2, 1, 2])
-with col_pdf[1]:
-    if st.button("🖨️ PDF 출력", use_container_width=True):
-        st.markdown("""
-        <script>window.print();</script>
-        """, unsafe_allow_html=True)
-        st.info("Ctrl+P → PDF로 저장을 선택하세요!")
+if st.button("🖨️ PDF 출력 (Ctrl+P)", use_container_width=False):
+    st.info("Ctrl+P 를 누르고 → '대상'을 'PDF로 저장' 선택 → 저장!")
