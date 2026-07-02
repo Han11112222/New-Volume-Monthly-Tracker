@@ -110,19 +110,34 @@ def load_github():
 # ── 구글 스프레드시트 총공급량 ──────────────────────────
 GSHEET_URL = "https://docs.google.com/spreadsheets/d/13HrIz6OytYDykXeXzXJ02I6XbaKin1YaKBoO2kBd6Bs/export?format=csv&gid=0"
 
-@st.cache_data(ttl=600)
+@st.cache_data(ttl=300, show_spinner=False)
 def load_supply_gsheet():
     try:
-        df = pd.read_csv(GSHEET_URL, header=0)
-        cols = ['일자','공급량_MJ','공급량_M3','평균기온','최저기온','최고기온']
-        df.columns = cols[:len(df.columns)] + [f'_c{i}' for i in range(max(0,len(df.columns)-6))]
+        # requests 방식으로 직접 다운로드
+        import urllib.request
+        req = urllib.request.Request(
+            GSHEET_URL,
+            headers={"User-Agent": "Mozilla/5.0"}
+        )
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            raw = resp.read()
+        df = pd.read_csv(io.BytesIO(raw), header=0)
+        # 컬럼 정리
+        df.columns = [str(c).strip() for c in df.columns]
+        # 첫 번째 컬럼=일자, 두 번째=공급량MJ
+        df = df.iloc[:, :6]
+        df.columns = ['일자','공급량_MJ','공급량_M3','평균기온','최저기온','최고기온'][:len(df.columns)]
         df['일자'] = pd.to_datetime(df['일자'], errors='coerce')
         df = df.dropna(subset=['일자'])
-        df['공급량_MJ'] = pd.to_numeric(df['공급량_MJ'].astype(str).str.replace(',',''), errors='coerce')
+        df['공급량_MJ'] = pd.to_numeric(
+            df['공급량_MJ'].astype(str).str.replace(',','').str.replace(' ',''),
+            errors='coerce')
+        df = df.dropna(subset=['공급량_MJ'])
         df['공급량_GJ'] = df['공급량_MJ'] / 1000
         df['연'] = df['일자'].dt.year
         df['월'] = df['일자'].dt.month
-        return df.groupby(['연','월'])['공급량_GJ'].sum().reset_index(), None
+        monthly = df.groupby(['연','월'])['공급량_GJ'].sum().reset_index()
+        return monthly, None
     except Exception as e:
         return None, str(e)
 
@@ -193,8 +208,13 @@ with c1:
     if gh_errors: st.warning("⚠️ GitHub: " + " | ".join(gh_errors))
     else: st.success("✅ GitHub 계획 데이터 자동 로드 완료")
 with c2:
-    if gs_err: st.warning(f"⚠️ 구글시트: {gs_err}")
-    elif auto_actual: st.success(f"✅ 구글시트: 당월 **{auto_actual:,.0f} GJ** | 누계 **{auto_cum:,.0f} GJ**")
+    if gs_err:
+        st.warning(f"⚠️ 구글시트 오류: {gs_err}")
+        st.info("💡 구글시트 접근 실패 시 총공급량을 수동으로 입력해주세요.")
+    elif auto_actual:
+        st.success(f"✅ 구글시트 자동합산: 당월 **{auto_actual:,.0f} GJ** | 누계 **{auto_cum:,.0f} GJ**")
+    else:
+        st.info(f"ℹ️ {int(sel_year)}년 {sel_month}월 구글시트 데이터 없음 → 수동 입력")
 
 with col_s2:
     총공_당실 = st.number_input("총공급량 당월 실적 (GJ) 📡자동",
