@@ -89,7 +89,7 @@ def load_github():
         },
         "new_2": {
             "fname": "new_2.(통합)신규개발량(202606)_5월 확정공급량적용_20260626.xlsx",
-            "sheets": ["3_1. 개발량 계획"]
+            "sheets": ["3_1. 개발량 계획", "3_2. 개발량 실적"]
         }
     }
     for key, info in files.items():
@@ -237,6 +237,7 @@ df_vol  = sheets.get('공급량 계획_MJ(2026년)') # 공급량 계획
 df_n1p   = gh_data.get("new_1",{}).get("3_1. 개발량 계획")
 df_n1rpt = gh_data.get("new_1",{}).get("(회의자료 입력용)공급전 및 공급량 현황")
 df_n2p   = gh_data.get("new_2",{}).get("3_1. 개발량 계획")
+df_n2r   = gh_data.get("new_2",{}).get("3_2. 개발량 실적")   # 신규개발량 누적 실적
 
 m  = sel_month - 1
 mc = m + 4   # 공급전계획: col4=1월
@@ -301,8 +302,12 @@ def il(row_key, col):
 개발량_당계 = (s(df_n2p,103,nc) or 0)/1000
 개발량_누계 = (s(df_n2p,105,nc) or 0)/1000
 
-# 신규개발량 실적 (신규개발량 파일)
+# 신규개발량 실적
+# 당월: 신규개발량 파일 월간개발량 합산
+# 누계: new_2 3_2 row94(누적행), col(nc) MJ÷1000=GJ
 개발량_당실 = dev_detail['월간개발량'].sum() if dev_detail is not None else None
+개발량_누실_v = s(df_n2r, 94, nc)
+개발량_누실 = float(개발량_누실_v)/1000 if 개발량_누실_v else None
 
 # 총공급량 계획
 총공_연간 = s(df_n1rpt, 10, 2)   # new_1 회의자료 row10,col2
@@ -378,7 +383,9 @@ html1 = f"""
       <td>{fmt(개발량_당계)}</td>
       <td>{'<b>'+fmt(개발량_당실)+'</b>' if 개발량_당실 else 입력필요}</td>
       <td>{rate_html(개발량_당실,개발량_당계) if 개발량_당실 else '-'}</td>
-      <td>{fmt(개발량_누계)}</td><td>-</td><td>-</td>
+      <td>{fmt(개발량_누계)}</td>
+      <td>{'<b>'+fmt(개발량_누실)+'</b>' if 개발량_누실 else '-'}</td>
+      <td>{rate_html(개발량_누실,개발량_누계) if 개발량_누실 else '-'}</td>
     </tr>
     <tr>
       <td class="td-sub-label">총공급량</td>
@@ -489,7 +496,32 @@ else:
     st.warning("② 신규개발량 파일을 업로드하면 산업용 업체 현황이 표시됩니다.")
 
 st.markdown("---")
+
+# ── 출력 버튼 ──
 st.markdown("""
-<div style='text-align:center;padding:12px;color:#555;font-size:13px;'>
-🖨️ <b>PDF 출력</b>: Ctrl+P → 대상: PDF로 저장 → 레이아웃: 가로 → 저장
-</div>""", unsafe_allow_html=True)
+<style>
+.print-btn-wrap { text-align: center; padding: 20px 0; }
+.print-btn {
+    display: inline-block;
+    background: linear-gradient(135deg, #1e3a6b, #2d5fa8);
+    color: white !important; font-size: 16px; font-weight: 700;
+    padding: 14px 60px; border-radius: 8px; cursor: pointer;
+    border: none; text-decoration: none;
+    box-shadow: 0 4px 12px rgba(30,58,107,0.3);
+    transition: opacity 0.2s;
+}
+.print-btn:hover { opacity: 0.85; }
+.print-guide {
+    font-size: 12px; color: #888; margin-top: 10px;
+}
+@media print {
+    .print-btn-wrap { display: none !important; }
+}
+</style>
+<div class="print-btn-wrap">
+    <button class="print-btn" onclick="window.print()">🖨️ 보고서 출력 / PDF 저장</button>
+    <div class="print-guide">
+        Ctrl+P → 대상: <b>PDF로 저장</b> → 레이아웃: <b>가로</b> → 저장
+    </div>
+</div>
+""", unsafe_allow_html=True)
