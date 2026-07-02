@@ -21,18 +21,43 @@ st.markdown("""
 }
 .note-right { font-size: 12px; color: #555; text-align: right; margin-bottom: 4px; }
 table { border-collapse: collapse; width: 100%; font-size: 13px; margin-bottom: 12px; }
-th, td { border: 1px solid #aaa; padding: 7px 10px; text-align: center;
-         white-space: nowrap; font-size: 13px;
-         color: #222 !important; vertical-align: middle; }
-td * { color: #222 !important; font-size: 13px !important; }
-td small { font-size: 12px !important; color: #444 !important; }
-td b { color: #222 !important; font-weight: 700; }
-.rate-red { color: #c0392b !important; font-weight: 700; }
-.rate-ok  { color: #1a7a1a !important; font-weight: 700; }
-.td-label { background: #2d5fa8; font-weight: 700;
-            color: white !important; text-align: center !important; }
-.td-sub-label { background: #4a7bc4; font-weight: 600;
-                color: white !important; text-align: center !important; }
+/* 헤더 */
+thead th {
+    background: #1e3a6b; color: white !important; font-weight: 700;
+    border: 1px solid #2d5fa8; padding: 7px 10px;
+    text-align: center !important; white-space: nowrap;
+    font-size: 13px; vertical-align: middle;
+}
+thead th.th-sub { background: #2d5fa8 !important; }
+/* 데이터 셀 */
+td {
+    border: 1px solid #ddd; padding: 7px 10px;
+    text-align: center; white-space: nowrap; font-size: 13px;
+    color: #222 !important; vertical-align: middle;
+    background: #ffffff; font-weight: normal;
+}
+/* 숫자 기본: 검정, 볼드 없음 */
+td span, td small { color: #222 !important; font-size: 12px !important; font-weight: normal !important; }
+/* 실적만 bold */
+td b { color: #222 !important; font-weight: 700 !important; }
+/* 달성률 색상만 유지 */
+.rate-red { color: #c0392b !important; font-weight: 700 !important; }
+.rate-ok  { color: #1a7a1a !important; font-weight: 700 !important; }
+/* 구분 라벨 - 파란배경 흰글씨 */
+.td-label {
+    background: #dce6f5 !important; font-weight: 700;
+    color: #1e3a6b !important; text-align: center !important;
+}
+/* 소분류 라벨 - 연한배경 */
+.td-sub-label {
+    background: #eef2fa !important; font-weight: 600;
+    color: #333 !important; text-align: center !important;
+}
+/* 짝수행 줄무늬 */
+tr:nth-child(even) td { background: #f8f9fc; }
+tr:nth-child(odd)  td { background: #ffffff; }
+/* 라벨행은 줄무늬 적용 안 함 */
+tr td.td-label, tr td.td-sub-label { background: inherit; }
 thead th { background: #1e3a6b; color: white; font-weight: 700; }
 .th-sub { background: #2d5fa8 !important; }
 .td-label { background: #dce6f5; font-weight: 700; }
@@ -77,13 +102,18 @@ def d_inc(a, p):
     except: return "-"
 
 def cell(당월, 누계):
-    return f"{fmt(당월)}<br><small style='color:#555'>({fmt(누계)})</small>"
+    # 당월: 일반 검정, 누계: small 검정
+    return f"<span style='color:#222'>{fmt(당월)}</span><br><small style='color:#555;font-size:11px'>({fmt(누계)})</small>"
+
+def cell_bold(당월, 누계):
+    # 실적행: 당월 bold, 누계 small
+    return f"<b style='color:#222'>{fmt(당월)}</b><br><small style='color:#555;font-size:11px'>({fmt(누계)})</small>"
 
 def rate_cell(당월_a, 당월_p, 누계_a, 누계_p):
-    return f"{rate_html(당월_a,당월_p)}<br><small style='color:#888'>({rate_html(누계_a,누계_p)})</small>"
+    return f"{rate_html(당월_a,당월_p)}<br><small style='font-size:11px'>({rate_html(누계_a,누계_p)})</small>"
 
 def inc_cell(당월_a, 당월_p, 누계_a, 누계_p):
-    return f"{d_inc(당월_a,당월_p)}<br><small style='color:#888'>({d_inc(누계_a,누계_p)})</small>"
+    return f"<span style='color:#222'>{d_inc(당월_a,당월_p)}</span><br><small style='color:#555;font-size:11px'>({d_inc(누계_a,누계_p)})</small>"
 
 # ── GitHub 자동 로드 (계획 데이터) ──────────────────────
 BASE = "https://raw.githubusercontent.com/Han11112222/New-Volume-Monthly-Tracker/main"
@@ -440,10 +470,10 @@ html2 = f"""
     </tr>
     <tr>
       <td class="td-label">실적</td>
-      <td>{cell(공동_a,공동_ca)}</td><td>{cell(단독_a,단독_ca)}</td><td>{cell(소계_a,소계_ca)}</td>
-      <td>{cell(일반_a,일반_ca)}</td><td>{cell(업무_a,업무_ca)}</td>
-      <td>{cell(산업_a,산업_ca)}</td><td>{cell(열병_a,열병_ca)}</td>
-      <td>{cell(합계_a,합계_ca)}</td>
+      <td>{cell_bold(공동_a,공동_ca)}</td><td>{cell_bold(단독_a,단독_ca)}</td><td>{cell_bold(소계_a,소계_ca)}</td>
+      <td>{cell_bold(일반_a,일반_ca)}</td><td>{cell_bold(업무_a,업무_ca)}</td>
+      <td>{cell_bold(산업_a,산업_ca)}</td><td>{cell_bold(열병_a,열병_ca)}</td>
+      <td>{cell_bold(합계_a,합계_ca)}</td>
     </tr>
     <tr>
       <td class="td-label">달성률</td>
