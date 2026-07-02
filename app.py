@@ -29,10 +29,10 @@ td small { font-size: 12px !important; color: #444 !important; }
 td b { color: #222 !important; font-weight: 700; }
 .rate-red { color: #c0392b !important; font-weight: 700; }
 .rate-ok  { color: #1a7a1a !important; font-weight: 700; }
-.td-label { background: #dce6f5; font-weight: 700;
-            color: #1e3a6b !important; text-align: center !important; }
-.td-sub-label { background: #eef2fa; font-weight: 600;
-                color: #333 !important; text-align: center !important; }
+.td-label { background: #2d5fa8; font-weight: 700;
+            color: white !important; text-align: center !important; }
+.td-sub-label { background: #4a7bc4; font-weight: 600;
+                color: white !important; text-align: center !important; }
 thead th { background: #1e3a6b; color: white; font-weight: 700; }
 .th-sub { background: #2d5fa8 !important; }
 .td-label { background: #dce6f5; font-weight: 700; }
