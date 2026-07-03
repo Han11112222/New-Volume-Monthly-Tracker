@@ -147,17 +147,37 @@ def load_gsheet():
         df = df.dropna(subset=['일자'])
         df['공급량_MJ'] = pd.to_numeric(
             df['공급량_MJ'].astype(str).str.replace(',','').str.strip(), errors='coerce')
+        df['공급량_M3'] = pd.to_numeric(
+            df['공급량_M3'].astype(str).str.replace(',','').str.strip(), errors='coerce')
         df['GJ'] = df['공급량_MJ'] / 1000
-        df['연'] = df['일자'].dt.year; df['월'] = df['일자'].dt.month
-        return df.groupby(['연','월'])['GJ'].sum().reset_index(), None
+        df['연'] = df['일자'].dt.year
+        df['월'] = df['일자'].dt.month
+        # 월별 집계: GJ 합계, MJ 합계, M3 합계
+        monthly = df.groupby(['연','월']).agg(
+            GJ=('GJ','sum'),
+            MJ=('공급량_MJ','sum'),
+            M3=('공급량_M3','sum')
+        ).reset_index()
+        # 월별 환산계수: 열량(MJ) / 부피(M3)
+        monthly['환산계수'] = monthly['MJ'] / monthly['M3']
+        return monthly, None
     except Exception as e:
         return None, str(e)
 
 def get_gj(mdf, yr, mo, cum=False):
     if mdf is None: return None
-    f = mdf[(mdf['연']==yr) & (mdf['월']<=(mo if cum else mo)) &
-            (mdf['월']>=(1 if cum else mo))]
-    return float(f['GJ'].sum()) if len(f)>0 else None
+    if cum:
+        f = mdf[(mdf['연']==yr) & (mdf['월']<=mo)]
+        return float(f['GJ'].sum()) if len(f)>0 else None
+    f = mdf[(mdf['연']==yr) & (mdf['월']==mo)]
+    return float(f['GJ'].values[0]) if len(f)>0 else None
+
+def get_환산계수(mdf, yr, mo):
+    """월별 환산계수 (MJ/㎥) = 열량합계/부피합계"""
+    if mdf is None: return None
+    f = mdf[(mdf['연']==yr) & (mdf['월']==mo)]
+    if len(f) == 0: return None
+    return float(f['환산계수'].values[0])
 
 # ── 파일 로드 ──────────────────────────────────────────
 @st.cache_data
@@ -371,7 +391,10 @@ with cc1:
     else: st.success("✅ GitHub 계획 데이터 로드 완료")
 with cc2:
     if gs_err: st.warning(f"⚠️ 구글시트: {gs_err}")
-    elif auto_act: st.success(f"✅ 구글시트: 당월 **{auto_act:,.0f}** | 누계 **{auto_cum:,.0f}** GJ")
+    elif auto_act:
+        환산 = get_환산계수(mdf, int(sel_year), sel_month)
+        환산_str = f"{환산:.3f} MJ/㎥" if 환산 else "없음"
+        st.success(f"✅ 구글시트: 당월 **{auto_act:,.0f}** | 누계 **{auto_cum:,.0f}** GJ | 환산계수 **{환산_str}**")
     else: st.info("ℹ️ 구글시트 데이터 없음 → 수동 입력")
 
 with cs2:
@@ -430,8 +453,24 @@ def il(k, c): return s(df_il, RI.get(k), c)
 개발량_연간=(s(df_n2p,104,14) or 0)/1000  # row104,col14=383,816,961 MJ → 383,817 GJ
 개발량_당계=(s(df_n2p,103,nc) or 0)/1000
 개발량_누계=(s(df_n2p,105,nc) or 0)/1000
-# 신규개발량 당월실적: new_2 3_2 row92(월별실적MJ) ÷ 1000
-개발량_당실 = (s(df_n2r,92,nc) or 0)/1000 if df_n2r is not None else None
+# 신규개발량 당월실적: 신규개발량 파일(Sheet1) 월간개발량 합산
+# → 매월 업로드하는 raw data에서 직접 계산
+개발량_당실 = float(dev_df['월간개발량'].sum()) if dev_df is not None else None
+
+# 신규개발량 누계실적: 전월까지 누계(GitHub new_2 row94) + 당월합산
+# new_2 row94: col2=1월누적, col3=2월누적, ... col(nc)=당월누적
+# 전월 누계 = col(nc-1) 즉 m월이면 col(nc-1) = col(m+1)
+prev_nc = m + 1  # 전월 컬럼 (col2=1월 기준, m=0이면 전월없음)
+if df_n2r is not None and m > 0:
+    # 전월까지 누계(MJ) ÷ 1000 + 당월 합산
+    prev_cum_mj = s(df_n2r, 94, prev_nc)  # 전월 누적 MJ
+    prev_cum_gj = float(prev_cum_mj)/1000 if prev_cum_mj else 0
+    개발량_누실 = prev_cum_gj + (개발량_당실 or 0)
+elif df_n2r is not None and m == 0:
+    # 1월이면 전월 누계 없음 → 당월 = 누계
+    개발량_누실 = 개발량_당실
+else:
+    개발량_누실 = None
 _nv=s(df_n2r,94,nc); 개발량_누실=float(_nv)/1000 if _nv else None
 
 총공_연간=s(df_n1rt,10,2)
