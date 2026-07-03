@@ -384,30 +384,30 @@ st.markdown(f"""
   </thead>
   <tbody>
     <tr>
-      <td class="lbl" rowspan="3">공급전<br>(전)</td>
-      <td class="slbl">신규개발전</td>
+      <td style='background:#dce6f5;font-weight:700;color:#1e3a6b;text-align:center;vertical-align:middle;border:1px solid #ddd;padding:7px 10px;font-size:13px' rowspan="3">공급전<br>(전)</td>
+      <td style='background:#eef2fa;font-weight:600;color:#333;text-align:center;vertical-align:middle;border:1px solid #ddd;padding:7px 10px;font-size:13px'>신규개발전</td>
       <td>{n(신규_연간)}</td><td>{n(신규_당계)}</td><td>{n(신규_당실)}</td>
       <td>{rate_html(신규_당실,신규_당계)}</td>
       <td>{n(신규_누계)}</td><td>{n(신규_누실)}</td>
       <td>{rate_html(신규_누실,신규_누계)}</td>
     </tr>
     <tr>
-      <td class="slbl">폐전</td>
+      <td style='background:#eef2fa;font-weight:600;color:#333;text-align:center;vertical-align:middle;border:1px solid #ddd;padding:7px 10px;font-size:13px'>폐전</td>
       <td>{n(폐전_연간)}</td><td>{n(폐전_당계)}</td><td>{n(폐전_당실)}</td>
       <td>{rate_html(폐전_당실,폐전_당계)}</td>
       <td>{n(폐전_누계)}</td><td>{n(폐전_누실)}</td>
       <td>{rate_html(폐전_누실,폐전_누계)}</td>
     </tr>
     <tr>
-      <td class="slbl">순증가</td>
+      <td style='background:#eef2fa;font-weight:600;color:#333;text-align:center;vertical-align:middle;border:1px solid #ddd;padding:7px 10px;font-size:13px'>순증가</td>
       <td>{n(순증_연간)}</td><td>{n(순증_당계)}</td><td>{n(순증_당실)}</td>
       <td>{rate_html(순증_당실,순증_당계)}</td>
       <td>{n(순증_누계)}</td><td>{n(순증_누실)}</td>
       <td>{rate_html(순증_누실,순증_누계)}</td>
     </tr>
     <tr>
-      <td class="lbl" rowspan="2">공급량<br>(GJ)</td>
-      <td class="slbl">신규개발량</td>
+      <td style='background:#dce6f5;font-weight:700;color:#1e3a6b;text-align:center;vertical-align:middle;border:1px solid #ddd;padding:7px 10px;font-size:13px' rowspan="2">공급량<br>(GJ)</td>
+      <td style='background:#eef2fa;font-weight:600;color:#333;text-align:center;vertical-align:middle;border:1px solid #ddd;padding:7px 10px;font-size:13px'>신규개발량</td>
       <td>{n(개발량_연간)}</td><td>{n(개발량_당계)}</td>
       <td>{n(개발량_당실) if 개발량_당실 else 입력필요}</td>
       <td>{rate_html(개발량_당실,개발량_당계) if 개발량_당실 else n(None)}</td>
@@ -416,7 +416,7 @@ st.markdown(f"""
       <td>{rate_html(개발량_누실,개발량_누계) if 개발량_누실 else n(None)}</td>
     </tr>
     <tr>
-      <td class="slbl">총공급량</td>
+      <td style='background:#eef2fa;font-weight:600;color:#333;text-align:center;vertical-align:middle;border:1px solid #ddd;padding:7px 10px;font-size:13px'>총공급량</td>
       <td>{n(총공_연간)}</td><td>{n(총공_당계)}</td>
       <td>{n(총공_당실_v) if 총공_당실_v else 입력필요}</td>
       <td>{rate_html(총공_당실_v,총공_당계) if 총공_당실_v else n(None)}</td>
@@ -447,19 +447,19 @@ st.markdown(f"""
   </thead>
   <tbody>
     <tr>
-      <td class="lbl">계획</td>
+      <td style='background:#dce6f5;font-weight:700;color:#1e3a6b;text-align:center;vertical-align:middle;border:1px solid #ddd;padding:7px 10px;font-size:13px'>계획</td>
       <td>{cell(공동_p,공동_cp)}</td><td>{cell(단독_p,단독_cp)}</td><td>{cell(소계_p,소계_cp)}</td>
       <td>{n(일반_p)}</td><td>{n(업무_p)}</td>
       <td>{n(산업_p)}</td><td>{n(열병_p)}</td><td>{cell(합계_p,합계_cp)}</td>
     </tr>
     <tr>
-      <td class="lbl">실적</td>
+      <td style='background:#dce6f5;font-weight:700;color:#1e3a6b;text-align:center;vertical-align:middle;border:1px solid #ddd;padding:7px 10px;font-size:13px'>실적</td>
       <td>{cell(공동_a,공동_ca)}</td><td>{cell(단독_a,단독_ca)}</td><td>{cell(소계_a,소계_ca)}</td>
       <td>{cell(일반_a,일반_ca)}</td><td>{cell(업무_a,업무_ca)}</td>
       <td>{cell(산업_a,산업_ca)}</td><td>{cell(열병_a,열병_ca)}</td><td>{cell(합계_a,합계_ca)}</td>
     </tr>
     <tr>
-      <td class="lbl">달성률</td>
+      <td style='background:#dce6f5;font-weight:700;color:#1e3a6b;text-align:center;vertical-align:middle;border:1px solid #ddd;padding:7px 10px;font-size:13px'>달성률</td>
       <td>{rate_cell(공동_a,공동_p,공동_ca,공동_cp)}</td>
       <td>{rate_cell(단독_a,단독_p,단독_ca,단독_cp)}</td>
       <td>{rate_cell(소계_a,소계_p,소계_ca,소계_cp)}</td>
@@ -470,7 +470,7 @@ st.markdown(f"""
       <td>{rate_cell(합계_a,합계_p,합계_ca,합계_cp)}</td>
     </tr>
     <tr>
-      <td class="lbl">증감</td>
+      <td style='background:#dce6f5;font-weight:700;color:#1e3a6b;text-align:center;vertical-align:middle;border:1px solid #ddd;padding:7px 10px;font-size:13px'>증감</td>
       <td>{inc_cell(공동_a,공동_p,공동_ca,공동_cp)}</td>
       <td>{inc_cell(단독_a,단독_p,단독_ca,단독_cp)}</td>
       <td>{inc_cell(소계_a,소계_p,소계_ca,소계_cp)}</td>
