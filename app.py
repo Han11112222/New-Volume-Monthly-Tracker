@@ -417,10 +417,11 @@ def il(k, c): return s(df_il, RI.get(k), c)
 순증_당계=(신규_당계 or 0)-(폐전_당계 or 0)
 순증_누계=(신규_누계 or 0)-(폐전_누계 or 0)
 
-개발량_연간=(s(df_n2p,103,14) or 0)/1000
+개발량_연간=(s(df_n2p,104,14) or 0)/1000  # row104,col14=383,816,961 MJ → 383,817 GJ
 개발량_당계=(s(df_n2p,103,nc) or 0)/1000
 개발량_누계=(s(df_n2p,105,nc) or 0)/1000
-개발량_당실=dev_df['월간개발량'].sum() if dev_df is not None else None
+# 신규개발량 당월실적: new_2 3_2 row92(월별실적MJ) ÷ 1000
+개발량_당실 = (s(df_n2r,92,nc) or 0)/1000 if df_n2r is not None else None
 _nv=s(df_n2r,94,nc); 개발량_누실=float(_nv)/1000 if _nv else None
 
 총공_연간=s(df_n1rt,10,2)
