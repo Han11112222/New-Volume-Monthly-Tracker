@@ -260,46 +260,33 @@ def make_excel(yr, mo, data1, data2, ind_df):
         hc(ws,r,c,v,sub_fill,hdr_font)
 
     # ── 표2 데이터 (당월 + 괄호누계) ──
+    def pct_str(v):
+        try: return f"{float(v):.1f}%" if v is not None else "-"
+        except: return "-"
+
+    def comma_str(v):
+        try: return f"{int(round(float(v))):,}" if v is not None else "-"
+        except: return "-"
+
     r += 1
     for row in data2:
         구분 = row[0]
         vals = row[1:]
         pairs = list(zip(vals[::2], vals[1::2]))  # (당월, 누계) 쌍
-        hc(ws,r,1,구분,lbl_fill,lbl_font)
+        hc(ws, r, 1, 구분, lbl_fill, lbl_font)
         for ci, (당월_v, 누계_v) in enumerate(pairs):
             col = ci + 2
             if 구분 == "달성률":
-                # 달성률: 당월% (누계%) 형식 텍스트
-                def pct_str(v):
-                    try: return f"{float(v):.1f}%" if v is not None else "-"
-                    except: return "-"
-                val_str = f"{pct_str(당월_v)}
-({pct_str(누계_v)})"
-                c_obj = ws.cell(row=r, column=col, value=val_str)
-                c_obj.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
-                c_obj.border = border
-                c_obj.font = Font(name="맑은 고딕", size=10, color="222222")
+                val_str = pct_str(당월_v) + "\n(" + pct_str(누계_v) + ")"
             elif 구분 == "증감":
-                val_str = f"{fmt(당월_v)}
-({fmt(누계_v)})"
-                c_obj = ws.cell(row=r, column=col, value=val_str)
-                c_obj.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
-                c_obj.border = border
-                c_obj.font = num_font
+                val_str = comma_str(당월_v) + "\n(" + comma_str(누계_v) + ")"
             else:
-                # 계획/실적: 당월 (누계) 텍스트
-                v1 = int(round(float(당월_v))) if 당월_v is not None else "-"
-                v2 = int(round(float(누계_v))) if 누계_v is not None else "-"
-                def comma(v): 
-                    try: return f"{int(v):,}"
-                    except: return "-"
-                val_str = f"{comma(v1)}
-({comma(v2)})"
-                c_obj = ws.cell(row=r, column=col, value=val_str)
-                c_obj.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
-                c_obj.border = border
-                c_obj.font = num_font
-        ws.row_dimensions[r].height = 30  # 2줄 표시를 위해 행 높이
+                val_str = comma_str(당월_v) + "\n(" + comma_str(누계_v) + ")"
+            c_obj = ws.cell(row=r, column=col, value=val_str)
+            c_obj.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+            c_obj.border = border
+            c_obj.font = num_font
+        ws.row_dimensions[r].height = 30
         r += 1
 
     # ── 산업용 업체 (있으면) ──
