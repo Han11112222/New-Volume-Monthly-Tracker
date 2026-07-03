@@ -180,7 +180,7 @@ def load_dev(b, fn):
     except: return None
 
 # ── 엑셀 다운로드 생성 ────────────────────────────────
-def make_excel(yr, mo, data1, data2, ind_df):
+def make_excel(yr, mo, data1, data2, ind_df, biz_df=None):
     wb = Workbook()
     ws = wb.active
     ws.title = f"{yr}년{mo}월 영업현황"
@@ -289,16 +289,16 @@ def make_excel(yr, mo, data1, data2, ind_df):
         ws.row_dimensions[r].height = 30
         r += 1
 
-    # ── 산업용 업체 (있으면) ──
-    if ind_df is not None and not ind_df.empty:
+    # ── 업체 현황 공통 출력 함수 ──
+    def write_company_table(ws, r, title, df_co, mo):
         r += 1
         ws.merge_cells(start_row=r,start_column=1,end_row=r,end_column=6)
-        hc(ws,r,1,f"{mo}월 산업용 신규 업체 현황",hdr_fill,hdr_font)
+        hc(ws,r,1,title,hdr_fill,hdr_font)
         r += 1
         for c,v in enumerate(["업체명","업종","월사용예정량(㎥)","월사용예정량(GJ)","공급일","주소"],1):
             hc(ws,r,c,v,sub_fill,hdr_font)
         r += 1
-        for _, row in ind_df.iterrows():
+        for _, row in df_co.iterrows():
             hc(ws,r,1,row['신청명'],None,num_font)
             hc(ws,r,2,row['업종'],None,num_font)
             hc(ws,r,3,fv(row['월사용예정량']),None,num_font,num_fmt)
@@ -309,11 +309,21 @@ def make_excel(yr, mo, data1, data2, ind_df):
             c6.alignment = Alignment(horizontal="left",vertical="center")
             c6.border = border; c6.font = num_font
             r += 1
-        # 합계
         hc(ws,r,1,"합 계",lbl_fill,lbl_font)
         hc(ws,r,2,"",lbl_fill,lbl_font)
-        hc(ws,r,3,float(ind_df['월사용예정량'].sum()),lbl_fill,lbl_font,num_fmt)
-        hc(ws,r,4,float(ind_df['월간개발량'].sum()),lbl_fill,lbl_font,'#,##0.00')
+        hc(ws,r,3,float(df_co['월사용예정량'].sum()),lbl_fill,lbl_font,num_fmt)
+        hc(ws,r,4,float(df_co['월간개발량'].sum()),lbl_fill,lbl_font,'#,##0.00')
+        hc(ws,r,5,"",lbl_fill,lbl_font)
+        hc(ws,r,6,"",lbl_fill,lbl_font)
+        return r + 1
+
+    # ── 산업용 업체 (있으면) ──
+    if ind_df is not None and not ind_df.empty:
+        r = write_company_table(ws, r, f"{mo}월 산업용 신규 업체 현황", ind_df, mo) - 1
+
+    # ── 업무용 업체 (있으면) ──
+    if biz_df is not None and not biz_df.empty:
+        r = write_company_table(ws, r, f"{mo}월 업무용 신규 업체 현황", biz_df, mo) - 1
 
     # 열 너비
     widths = [10,14,12,12,12,12,12,12,12]
@@ -590,7 +600,40 @@ if dev_df is not None:
         st.info(f"✅ {sel_month}월 신규 산업용 업체 없음")
         ind = None
 else:
-    st.warning("② 신규개발량 파일을 업로드하면 산업용 업체 현황이 표시됩니다.")
+    st.warning("② 신규개발량 파일을 업로드하면 산업용/업무용 업체 현황이 표시됩니다.")
+
+# ── 업무용 신규 업체 ──
+biz = None
+if dev_df is not None:
+    biz = dev_df[dev_df['용도'].astype(str).str.contains('업무', na=False)].copy()
+    if not biz.empty:
+        st.markdown(f'<div class="box-title">🏢 {sel_month}월 업무용 신규 업체 현황</div>',
+                    unsafe_allow_html=True)
+        biz_rows = "".join([
+            f"<tr><td>{r['신청명']}</td><td>{r['업종']}</td>"
+            f"<td>{fmt(r['월사용예정량'])} ㎥</td>"
+            f"<td>{fmt(r['월간개발량'],2)} GJ</td>"
+            f"<td>{str(r['공급일'])[:10] if pd.notna(r['공급일']) else '-'}</td>"
+            f"<td style='text-align:left;font-size:11px'>{r['주소']}</td></tr>"
+            for _, r in biz.iterrows()
+        ])
+        st.markdown(f"""
+        <table>
+          <thead><tr>
+            <th>업체명</th><th>업종</th><th>월사용예정량(㎥)</th>
+            <th>월사용예정량(GJ)</th><th>공급일</th><th>주소</th>
+          </tr></thead>
+          <tbody>{biz_rows}
+            <tr style="background:#dce6f5">
+              <td colspan="2" style="font-weight:700">합 계</td>
+              <td>{fmt(biz['월사용예정량'].sum())} ㎥</td>
+              <td>{fmt(biz['월간개발량'].sum(),2)} GJ</td>
+              <td colspan="2"></td>
+            </tr>
+          </tbody>
+        </table>""", unsafe_allow_html=True)
+    else:
+        st.info(f"✅ {sel_month}월 신규 업무용 업체 없음")
 
 # ── 엑셀 다운로드 버튼 (하단) ──────────────────────────
 st.markdown("---")
@@ -626,7 +669,9 @@ data2 = [
                d_inc_v(합계_a,합계_p), d_inc_v(합계_ca,합계_cp)),
 ]
 
-xl_bytes = make_excel(int(sel_year), sel_month, data1, data2, ind)
+# 업무용 데이터 준비
+biz_xl = biz if (dev_df is not None and biz is not None and not biz.empty) else None
+xl_bytes = make_excel(int(sel_year), sel_month, data1, data2, ind, biz_xl)
 fname = f"{int(sel_year)}년{sel_month}월_영업현황보고.xlsx"
 
 col_dl = st.columns([2,1,2])
