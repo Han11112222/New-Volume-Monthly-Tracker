@@ -97,13 +97,35 @@ def inc_cell(da, dp, ca, cp):
 입력필요 = "<span style='color:#aaa;font-size:11px'>입력필요</span>"
 
 # ── GitHub 설정 ──────────────────────────────────────
-BASE  = "https://raw.githubusercontent.com/Han11112222/New-Volume-Monthly-Tracker/main"
+BASE      = "https://raw.githubusercontent.com/Han11112222/New-Volume-Monthly-Tracker/main"
+API_BASE  = "https://api.github.com/repos/Han11112222/New-Volume-Monthly-Tracker/contents"
 GSHEET_URL = ("https://docs.google.com/spreadsheets/d/"
               "13HrIz6OytYDykXeXzXJ02I6XbaKin1YaKBoO2kBd6Bs/export?format=csv&gid=0")
 
+@st.cache_data(ttl=3600)
+def get_latest_new2_fname():
+    """GitHub 저장소에서 new_2로 시작하는 파일 중 가장 최신 파일명 반환"""
+    try:
+        import json
+        req = urllib.request.Request(
+            API_BASE,
+            headers={"User-Agent": "Mozilla/5.0", "Accept": "application/vnd.github.v3+json"}
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            files = json.loads(resp.read().decode())
+        # new_2로 시작하는 파일만 필터
+        new2_files = [f['name'] for f in files if f['name'].startswith('new_2')]
+        if not new2_files:
+            return None, "new_2 파일을 찾을 수 없습니다."
+        # 이름 기준 내림차순 정렬 → 가장 최신 파일
+        new2_files.sort(reverse=True)
+        return new2_files[0], None
+    except Exception as e:
+        return None, str(e)
+
 # ── GitHub 파일 로드 ──────────────────────────────────
 @st.cache_data(ttl=3600)
-def load_github_plans():
+def load_github_plans(new2_fname):
     """new_1(계획), new_2(계획/실적) GitHub에서 로드"""
     errors, result = [], {}
     files = {
@@ -112,7 +134,7 @@ def load_github_plans():
             "sheets": ["3_1. 개발량 계획", "(회의자료 입력용)공급전 및 공급량 현황"]
         },
         "new_2": {
-            "fname": "new_2.(통합)신규개발량(202606)_5월 확정공급량적용_20260626.xlsx",
+            "fname": new2_fname,
             "sheets": ["3_1. 개발량 계획", "3_2. 개발량 실적"]
         }
     }
@@ -240,7 +262,8 @@ with st.sidebar:
 # ════════════════════════════════════════════════════
 # 1. GitHub 계획 데이터
 with st.spinner("📡 GitHub 계획 데이터 로드 중..."):
-    gh, gh_err = load_github_plans()
+    new2_fname, new2_err = get_latest_new2_fname()
+    gh, gh_err = load_github_plans(new2_fname) if new2_fname else ({}, [new2_err or "new_2 파일 없음"])
     mdf, gs_err = load_gsheet()
 
 auto_act = get_gj(mdf, yr, mo)
@@ -277,7 +300,9 @@ st.markdown(f'<div class="report-header">📊 마케팅본부 _ {yr}년 {mo}월 
 col_s1, col_s2, col_s3 = st.columns(3)
 with col_s1:
     if gh_err: st.warning("⚠️ GitHub 계획 로드 실패")
-    else: st.success("✅ 계획 데이터 로드 완료")
+    else:
+        st.success("✅ 계획 데이터 로드 완료")
+        if new2_fname: st.caption(f"📄 {new2_fname}")
 with col_s2:
     if xlsm_bytes: st.success(f"✅ 영업일보: `{xlsm_name}`")
     else: st.warning(f"⚠️ 영업일보 없음: `{xlsm_github_name}`")
