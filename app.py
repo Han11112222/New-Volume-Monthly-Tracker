@@ -346,14 +346,10 @@ if dev_df is not None and 환산계수:
 else:
     개발량_당실 = None
 
-prev_nc = m + 1
-if df_n2r is not None and m > 0:
-    prev_mj = s(df_n2r,94,prev_nc)
-    개발량_누실 = float(prev_mj)/1000 + (개발량_당실 or 0) if prev_mj else None
-elif m == 0:
-    개발량_누실 = 개발량_당실
-else:
-    개발량_누실 = None
+# 누계실적: new_2 row94(누적) col(nc) = 1월~당월 전체 누적
+# row94 col(nc)에 당월까지의 누적값이 직접 들어있음
+_nv = s(df_n2r, 94, nc)
+개발량_누실 = float(_nv)/1000 if _nv else 개발량_당실
 
 총공_연간=s(df_n1rt,10,2)
 총공_당계=(s(df_vol,5,vc) or 0)/1000
