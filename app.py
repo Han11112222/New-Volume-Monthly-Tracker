@@ -36,8 +36,8 @@ td {
     vertical-align: middle; background: #ffffff;
 }
 tr:nth-child(even) td { background: #f8f9fc; }
-td.lbl  { background: #dce6f5 !important; font-weight: 700; color: #1e3a6b; }
-td.slbl { background: #eef2fa !important; font-weight: 600; color: #333; }
+td.lbl  { background: #dce6f5 !important; font-weight: 700; color: #1e3a6b; text-align: center !important; vertical-align: middle; }
+td.slbl { background: #eef2fa !important; font-weight: 600; color: #333; text-align: center !important; vertical-align: middle; }
 [data-testid="stSidebar"] { background: #f0f4fa; }
 </style>
 """, unsafe_allow_html=True)
