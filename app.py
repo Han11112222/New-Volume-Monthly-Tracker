@@ -295,7 +295,7 @@ def make_excel(yr, mo, data1, data2, ind_df):
         ws.merge_cells(start_row=r,start_column=1,end_row=r,end_column=6)
         hc(ws,r,1,f"{mo}월 산업용 신규 업체 현황",hdr_fill,hdr_font)
         r += 1
-        for c,v in enumerate(["업체명","업종","월사용예정량(㎥)","열량(GJ)","공급일","주소"],1):
+        for c,v in enumerate(["업체명","업종","월사용예정량(㎥)","월사용예정량(GJ)","공급일","주소"],1):
             hc(ws,r,c,v,sub_fill,hdr_font)
         r += 1
         for _, row in ind_df.iterrows():
@@ -574,8 +574,8 @@ if dev_df is not None:
         st.markdown(f"""
         <table>
           <thead><tr>
-            <th>업체명</th><th>업종</th><th>월사용예정량</th>
-            <th>열량(GJ)</th><th>공급일</th><th>주소</th>
+            <th>업체명</th><th>업종</th><th>월사용예정량(㎥)</th>
+            <th>월사용예정량(GJ)</th><th>공급일</th><th>주소</th>
           </tr></thead>
           <tbody>{rows_html}
             <tr style="background:#dce6f5">
