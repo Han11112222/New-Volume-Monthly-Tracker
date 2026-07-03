@@ -69,8 +69,7 @@ def n(v, dec=0):
 def rate_html(a, p):
     try:
         val = float(a or 0) / float(p or 1) * 100
-        col = "#1a7a1a" if val >= 100 else "#c0392b"
-        return f"<span style='color:{col};font-size:13px;font-weight:normal'>{val:.1f}%</span>"
+        return f"<span style='color:#222;font-size:13px;font-weight:normal'>{val:.1f}%</span>"
     except: return "<span style='color:#222;font-size:13px'>-</span>"
 
 def rate_val(a, p):
@@ -214,10 +213,7 @@ def make_excel(yr, mo, data1, data2, ind_df):
         return cell
 
     def rate_font(a, p):
-        try:
-            v = float(a or 0)/float(p or 1)
-            return grn_font if v >= 1 else red_font
-        except: return num_font
+        return num_font  # 모두 검정
 
     # ── 표1 헤더 ──
     ws.merge_cells('A1:B2'); hc(ws,1,1,f"구 분",hdr_fill,hdr_font)
@@ -248,9 +244,8 @@ def make_excel(yr, mo, data1, data2, ind_df):
         hc(ws,r,9,rv2/100 if rv2 is not None else None,None,rate_font(누실,누계),pct_fmt)
         r += 1
 
-    # ── 표2 헤더 (2행 아래) ──
+    # ── 표2 헤더 ──
     r += 1
-    title_row = r
     ws.merge_cells(start_row=r,start_column=1,end_row=r,end_column=9)
     hc(ws,r,1,f"{mo}월 신규개발전 상세 현황 (단위: 전)",hdr_fill,hdr_font)
     r += 1
@@ -264,23 +259,47 @@ def make_excel(yr, mo, data1, data2, ind_df):
                 (5,""),(6,""),(7,""),(8,""),(9,"")]:
         hc(ws,r,c,v,sub_fill,hdr_font)
 
-    # ── 표2 데이터 ──
+    # ── 표2 데이터 (당월 + 괄호누계) ──
     r += 1
     for row in data2:
         구분 = row[0]
         vals = row[1:]
+        pairs = list(zip(vals[::2], vals[1::2]))  # (당월, 누계) 쌍
         hc(ws,r,1,구분,lbl_fill,lbl_font)
-        for ci, (당월_v, 누계_v) in enumerate(zip(vals[::2], vals[1::2])):
+        for ci, (당월_v, 누계_v) in enumerate(pairs):
             col = ci + 2
             if 구분 == "달성률":
-                rv = rate_val(당월_v, None)  # 이미 비율값
-                cell_obj = hc(ws,r,col,
-                    당월_v/100 if 당월_v is not None else None,
-                    None, rate_font(당월_v, 100), pct_fmt)
+                # 달성률: 당월% (누계%) 형식 텍스트
+                def pct_str(v):
+                    try: return f"{float(v):.1f}%" if v is not None else "-"
+                    except: return "-"
+                val_str = f"{pct_str(당월_v)}
+({pct_str(누계_v)})"
+                c_obj = ws.cell(row=r, column=col, value=val_str)
+                c_obj.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+                c_obj.border = border
+                c_obj.font = Font(name="맑은 고딕", size=10, color="222222")
             elif 구분 == "증감":
-                hc(ws,r,col,fv(당월_v),None,num_font,num_fmt)
+                val_str = f"{fmt(당월_v)}
+({fmt(누계_v)})"
+                c_obj = ws.cell(row=r, column=col, value=val_str)
+                c_obj.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+                c_obj.border = border
+                c_obj.font = num_font
             else:
-                hc(ws,r,col,fv(당월_v),None,num_font,num_fmt)
+                # 계획/실적: 당월 (누계) 텍스트
+                v1 = int(round(float(당월_v))) if 당월_v is not None else "-"
+                v2 = int(round(float(누계_v))) if 누계_v is not None else "-"
+                def comma(v): 
+                    try: return f"{int(v):,}"
+                    except: return "-"
+                val_str = f"{comma(v1)}
+({comma(v2)})"
+                c_obj = ws.cell(row=r, column=col, value=val_str)
+                c_obj.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+                c_obj.border = border
+                c_obj.font = num_font
+        ws.row_dimensions[r].height = 30  # 2줄 표시를 위해 행 높이
         r += 1
 
     # ── 산업용 업체 (있으면) ──
