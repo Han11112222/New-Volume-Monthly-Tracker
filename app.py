@@ -97,73 +97,102 @@ def inc_cell(da, dp, ca, cp):
 입력필요 = "<span style='color:#aaa;font-size:11px'>입력필요</span>"
 
 # ── GitHub 설정 ──────────────────────────────────────
-BASE      = "https://raw.githubusercontent.com/Han11112222/New-Volume-Monthly-Tracker/main"
-API_BASE  = "https://api.github.com/repos/Han11112222/New-Volume-Monthly-Tracker/contents"
+BASE     = "https://raw.githubusercontent.com/Han11112222/New-Volume-Monthly-Tracker/main"
 GSHEET_URL = ("https://docs.google.com/spreadsheets/d/"
               "13HrIz6OytYDykXeXzXJ02I6XbaKin1YaKBoO2kBd6Bs/export?format=csv&gid=0")
 
-# ── [수정] new_1, new_2 모두 동적 탐색 + 캐시 TTL 단축 ──
-@st.cache_data(ttl=60)
-def get_latest_files():
-    """GitHub 저장소에서 new_1, new_2 최신 파일명을 동적으로 반환"""
+def try_load_url(url):
+    """URL에서 바이트 로드, 실패시 None 반환"""
     try:
-        import json
-        req = urllib.request.Request(
-            API_BASE,
-            headers={"User-Agent": "Mozilla/5.0", "Accept": "application/vnd.github.v3+json"}
-        )
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            files = json.loads(resp.read().decode())
-        names = [f['name'] for f in files]
-
-        new1_files = sorted([nm for nm in names if nm.startswith('new_1')], reverse=True)
-        new2_files = sorted([nm for nm in names if nm.startswith('new_2')], reverse=True)
-        new1_fname = new1_files[0] if new1_files else None
-        new2_fname = new2_files[0] if new2_files else None
-
-        return new1_fname, new2_fname, names, None
-    except Exception as e:
-        return None, None, [], str(e)
-
-@st.cache_data(ttl=60)
-def load_github_plans(new1_fname, new2_fname):
-    """new_1(계획), new_2(계획/실적) GitHub에서 로드"""
-    errors, result = [], {}
-    files = {
-        "new_1": {
-            "fname": new1_fname,
-            "sheets": ["3_1. 개발량 계획", "(회의자료 입력용)공급전 및 공급량 현황"]
-        },
-        "new_2": {
-            "fname": new2_fname,
-            "sheets": ["3_1. 개발량 계획", "3_2. 개발량 실적"]
-        }
-    }
-    for key, info in files.items():
-        if not info["fname"]:
-            errors.append(f"{key}: 파일 없음")
-            continue
-        try:
-            url = f"{BASE}/{urllib.parse.quote(info['fname'])}"
-            buf = io.BytesIO(urllib.request.urlopen(url, timeout=15).read())
-            result[key] = {}
-            for sh in info["sheets"]:
-                try:
-                    result[key][sh] = pd.read_excel(buf, sheet_name=sh, header=None)
-                    buf.seek(0)
-                except: pass
-        except Exception as e:
-            errors.append(f"{key}: {e}")
-    return result, errors
-
-@st.cache_data(ttl=60)
-def load_github_file(fname):
-    """GitHub에서 특정 파일 로드"""
-    try:
-        url = f"{BASE}/{urllib.parse.quote(fname)}"
-        return io.BytesIO(urllib.request.urlopen(url, timeout=15).read()), None
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        return io.BytesIO(urllib.request.urlopen(req, timeout=15).read()), None
     except Exception as e:
         return None, str(e)
+
+# ── [핵심 수정] GitHub API 없이 파일명 직접 추론 ─────────
+# new_1: 저장소에 1개만 존재 → 고정 파일명 패턴으로 탐색
+# new_2: (통합)신규개발량(YYYYMM)_당월명 확정공급급... 형태
+# → raw URL로 직접 시도하는 방식으로 변경
+
+@st.cache_data(ttl=300)
+def find_new1_fname():
+    """new_1 파일명을 후보 패턴으로 직접 시도해서 찾기"""
+    # 저장소에 있는 new_1 파일명 패턴들을 직접 시도
+    candidates = [
+        "new_1.(작성용)6월 영업현황 보고(20260626).xlsx",
+        "new_1.(작성용)7월 영업현황 보고(20260726).xlsx",
+        "new_1.(작성용)5월 영업현황 보고(20260526).xlsx",
+        "new_1.(작성용)8월 영업현황 보고(20260826).xlsx",
+        "new_1.(작성용)9월 영업현황 보고(20260926).xlsx",
+        "new_1.(작성용)10월 영업현황 보고(20261026).xlsx",
+        "new_1.(작성용)11월 영업현황 보고(20261126).xlsx",
+        "new_1.(작성용)12월 영업현황 보고(20261226).xlsx",
+        "new_1.(작성용)1월 영업현황 보고(20260126).xlsx",
+        "new_1.(작성용)2월 영업현황 보고(20260226).xlsx",
+        "new_1.(작성용)3월 영업현황 보고(20260326).xlsx",
+        "new_1.(작성용)4월 영업현황 보고(20260426).xlsx",
+    ]
+    for fname in candidates:
+        url = f"{BASE}/{urllib.parse.quote(fname)}"
+        buf, err = try_load_url(url)
+        if buf:
+            return fname, buf, None
+    return None, None, "new_1 파일을 찾을 수 없습니다."
+
+@st.cache_data(ttl=300)
+def find_new2_fname(ym):
+    """new_2 파일명을 ym 기반으로 직접 시도해서 찾기"""
+    mo_names = {
+        '01':'1월','02':'2월','03':'3월','04':'4월','05':'5월','06':'6월',
+        '07':'7월','08':'8월','09':'9월','10':'10월','11':'11월','12':'12월'
+    }
+    mo_str = mo_names.get(ym[4:], '')
+    # 가능한 파일명 패턴 (당월명 확정공급급, 확정공급량 등 다양)
+    suffixes = ["확정공급급량.xlsx", "확정공급량.xlsx", "확정공급.xlsx"]
+    prefixes = [
+        f"new_2.(통합)신규개발량({ym})_{mo_str} ",
+        f"new_2.(통합)신규개발량({ym})_",
+    ]
+    for prefix in prefixes:
+        for suffix in suffixes:
+            fname = prefix + suffix
+            url = f"{BASE}/{urllib.parse.quote(fname)}"
+            buf, err = try_load_url(url)
+            if buf:
+                return fname, buf, None
+
+    # 패턴 매칭 실패 시: 전달(이전 달) ym도 시도
+    # (new_2 파일명에 전달 ym이 쓰이는 경우 대비)
+    yr_int = int(ym[:4]); mo_int = int(ym[4:])
+    prev_mo = mo_int - 1 if mo_int > 1 else 12
+    prev_yr = yr_int if mo_int > 1 else yr_int - 1
+    prev_ym = f"{prev_yr}{prev_mo:02d}"
+    prev_mo_str = mo_names.get(f"{prev_mo:02d}", '')
+    for suffix in suffixes:
+        for label in [f"{mo_str} ", f"{prev_mo_str} ", ""]:
+            fname = f"new_2.(통합)신규개발량({prev_ym})_{label}{suffix}"
+            url = f"{BASE}/{urllib.parse.quote(fname)}"
+            buf, err = try_load_url(url)
+            if buf:
+                return fname, buf, None
+
+    return None, None, f"new_2({ym}) 파일을 찾을 수 없습니다."
+
+@st.cache_data(ttl=300)
+def load_github_file(fname):
+    url = f"{BASE}/{urllib.parse.quote(fname)}"
+    return try_load_url(url)
+
+@st.cache_data(ttl=300)
+def load_excel_sheets(raw_bytes, fname, sheet_list):
+    """바이트에서 여러 시트 로드"""
+    result = {}
+    for sh in sheet_list:
+        try:
+            buf = io.BytesIO(raw_bytes)
+            result[sh] = pd.read_excel(buf, sheet_name=sh, header=None)
+        except: pass
+    return result
 
 # ── 구글시트 ──────────────────────────────────────────
 @st.cache_data(ttl=300, show_spinner=False)
@@ -258,7 +287,6 @@ with st.sidebar:
     st.markdown("### 💡 총공급량 실적")
     st.caption("구글시트에서 자동 합산됩니다.")
 
-    # 캐시 초기화 버튼
     st.markdown("---")
     if st.button("🔄 캐시 초기화 & 새로고침"):
         st.cache_data.clear()
@@ -268,12 +296,28 @@ with st.sidebar:
 # 데이터 로드
 # ════════════════════════════════════════════════════
 with st.spinner("📡 GitHub 계획 데이터 로드 중..."):
-    new1_fname, new2_fname, all_names, file_err = get_latest_files()
-    if new1_fname and new2_fname:
-        gh, gh_err = load_github_plans(new1_fname, new2_fname)
-    else:
-        gh, gh_err = {}, [file_err or "new_1/new_2 파일을 찾을 수 없습니다."]
+    # new_1: GitHub API 없이 raw URL 직접 시도
+    new1_fname, new1_buf, new1_err = find_new1_fname()
+    # new_2: ym 기반으로 raw URL 직접 시도
+    new2_fname, new2_buf, new2_err = find_new2_fname(ym)
     mdf, gs_err = load_gsheet()
+
+# new_1 시트 로드
+gh = {}
+gh_err = []
+if new1_buf:
+    raw1 = new1_buf.read()
+    sheets1 = load_excel_sheets(raw1, new1_fname, ["3_1. 개발량 계획", "(회의자료 입력용)공급전 및 공급량 현황"])
+    gh["new_1"] = sheets1
+else:
+    gh_err.append(f"new_1: {new1_err}")
+
+if new2_buf:
+    raw2 = new2_buf.read()
+    sheets2 = load_excel_sheets(raw2, new2_fname, ["3_1. 개발량 계획", "3_2. 개발량 실적"])
+    gh["new_2"] = sheets2
+else:
+    gh_err.append(f"new_2: {new2_err}")
 
 auto_act = get_gj(mdf, yr, mo)
 auto_cum = get_gj(mdf, yr, mo, cum=True)
@@ -305,24 +349,16 @@ else:
 st.markdown(f'<div class="report-header">📊 마케팅본부 _ {yr}년 {mo}월 영업현황 보고서</div>',
             unsafe_allow_html=True)
 
-# 로드 상태 표시
 col_s1, col_s2, col_s3 = st.columns(3)
 with col_s1:
     if gh_err:
-        st.warning("⚠️ GitHub 계획 로드 실패")
-        # [추가] 실제 오류 내용 + 탐지 파일 목록 표시
+        st.warning("⚠️ GitHub 계획 일부 로드 실패")
         for e in gh_err:
-            st.caption(f"오류: {e}")
-        st.caption(f"탐지된 new_1: `{new1_fname}`")
-        st.caption(f"탐지된 new_2: `{new2_fname}`")
-        if all_names:
-            st.caption("저장소 전체 파일 목록:")
-            for nm in all_names:
-                st.caption(f"  · {nm}")
+            st.caption(f"· {e}")
     else:
         st.success("✅ 계획 데이터 로드 완료")
-        st.caption(f"📄 new_1: {new1_fname}")
-        st.caption(f"📄 new_2: {new2_fname}")
+    if new1_fname: st.caption(f"📄 new_1: {new1_fname}")
+    if new2_fname: st.caption(f"📄 new_2: {new2_fname}")
 with col_s2:
     if xlsm_bytes: st.success(f"✅ 영업일보: `{xlsm_name}`")
     else: st.warning(f"⚠️ 영업일보 없음: `{xlsm_github_name}`")
@@ -598,7 +634,6 @@ def make_excel(yr, mo, rows1, rows2, ind_df, biz_df):
         try: return f"{int(round(float(v))):,}" if v is not None else "-"
         except: return "-"
 
-    # 표1 헤더
     ws.merge_cells('A1:B2'); hc(ws,1,1,"구 분",hf,hft)
     ws.merge_cells('C1:C2'); hc(ws,1,3,"연간계획",hf,hft)
     ws.merge_cells('D1:F1'); hc(ws,1,4,f"{mo}월 (당월)",hf,hft)
@@ -624,7 +659,6 @@ def make_excel(yr, mo, rows1, rows2, ind_df, biz_df):
         hc(ws,r,9,rv2/100 if rv2 else None,None,nf,pct_fmt)
         r += 1
 
-    # 표2 헤더
     r += 1
     ws.merge_cells(start_row=r,start_column=1,end_row=r,end_column=9)
     hc(ws,r,1,f"{mo}월 신규개발전 상세 현황 (단위: 전)",hf,hft); r+=1
