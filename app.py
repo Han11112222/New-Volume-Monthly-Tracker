@@ -108,7 +108,7 @@ def try_load_url(url):
     except Exception as e:
         return None, str(e)
 
-# ── new_1 파일 탐색 (raw URL 직접 시도) ──────────────
+# ── new_1 파일 탐색 ──────────────────────────────────
 @st.cache_data(ttl=300)
 def find_new1_fname():
     candidates = [
@@ -132,9 +132,11 @@ def find_new1_fname():
             return fname, buf, None
     return None, None, "new_1 파일을 찾을 수 없습니다."
 
-# ── new_2 파일 탐색 ────────────────────────────────────
-# 실제 파일명 패턴: new_2.(통합)신규개발량(YYYYMM)_N월 확정공급급량.xlsx
-# → "확정공급급량" (급이 두 번) 이 실제 파일명임을 확인
+# ── new_2 파일 탐색 ──────────────────────────────────
+# 실제 파일명 패턴 확인:
+#   new_2.(통합)신규개발량(202607)_6월 확정공급급...  ← 7월 보고, 파일ym=202607, 월명=전달(6월)
+#   new_2.(통합)신규개발량(202606)_5월 확정공급급...  ← 6월 보고, 파일ym=202606, 월명=전달(5월)
+# → 규칙: 파일내 ym = 당월 ym, 월명 = 전달 월명
 @st.cache_data(ttl=300)
 def find_new2_fname(ym):
     mo_names = {
@@ -144,24 +146,41 @@ def find_new2_fname(ym):
     yr_int = int(ym[:4])
     mo_int = int(ym[4:])
 
-    # 시도할 (파일내 ym, 월명) 조합: 당월 ym + 이전달 ym 모두 시도
-    ym_candidates = []
-    ym_candidates.append((ym, mo_names.get(ym[4:], '')))
+    # 전달 월명 계산
     prev_mo = mo_int - 1 if mo_int > 1 else 12
-    prev_yr = yr_int if mo_int > 1 else yr_int - 1
-    prev_ym = f"{prev_yr}{prev_mo:02d}"
-    ym_candidates.append((prev_ym, mo_names.get(f"{prev_mo:02d}", '')))
+    prev_mo_str = mo_names.get(f"{prev_mo:02d}", '')
 
-    # 실제 확인된 파일명 패턴 (확정공급급량 / 확정공급량 두 가지 모두 시도)
+    # 파일명 suffix 패턴 (확정공급급량 / 확정공급량 두 가지)
     suffixes = ["확정공급급량.xlsx", "확정공급량.xlsx"]
 
-    for file_ym, mo_str in ym_candidates:
-        for suffix in suffixes:
-            fname = f"new_2.(통합)신규개발량({file_ym})_{mo_str} {suffix}"
-            url = f"{BASE}/{urllib.parse.quote(fname)}"
-            buf, err = try_load_url(url)
-            if buf:
-                return fname, buf, None
+    # 1순위: 당월 ym + 전달 월명 (실제 확인된 패턴)
+    for suffix in suffixes:
+        fname = f"new_2.(통합)신규개발량({ym})_{prev_mo_str} {suffix}"
+        url = f"{BASE}/{urllib.parse.quote(fname)}"
+        buf, err = try_load_url(url)
+        if buf:
+            return fname, buf, None
+
+    # 2순위: 당월 ym + 당월 월명 (혹시 다른 달은 다를 수 있으므로 차선)
+    mo_str = mo_names.get(ym[4:], '')
+    for suffix in suffixes:
+        fname = f"new_2.(통합)신규개발량({ym})_{mo_str} {suffix}"
+        url = f"{BASE}/{urllib.parse.quote(fname)}"
+        buf, err = try_load_url(url)
+        if buf:
+            return fname, buf, None
+
+    # 3순위: 전달 ym + 전달 월명 (이전 달 파일이 남아있는 경우)
+    prev_yr = yr_int if mo_int > 1 else yr_int - 1
+    prev_ym = f"{prev_yr}{prev_mo:02d}"
+    prev_prev_mo = prev_mo - 1 if prev_mo > 1 else 12
+    prev_prev_mo_str = mo_names.get(f"{prev_prev_mo:02d}", '')
+    for suffix in suffixes:
+        fname = f"new_2.(통합)신규개발량({prev_ym})_{prev_prev_mo_str} {suffix}"
+        url = f"{BASE}/{urllib.parse.quote(fname)}"
+        buf, err = try_load_url(url)
+        if buf:
+            return fname, buf, None
 
     return None, None, f"new_2({ym}) 파일을 찾을 수 없습니다."
 
@@ -362,13 +381,15 @@ df_n1rt = gh.get("new_1",{}).get("(회의자료 입력용)공급전 및 공급�
 df_n2p  = gh.get("new_2",{}).get("3_1. 개발량 계획")
 df_n2r  = gh.get("new_2",{}).get("3_2. 개발량 실적")
 
-m  = mo - 1
-nc = m + 2
-vc = m + 3
+# ── 인덱스 계산 ────────────────────────────────────────
+m   = mo - 1
+nc1 = m + 2    # new_1 시트: A열=구분(col0), B열=col1 시작 → 1월=col2
+nc  = m + 1    # new_2 3_1시트: A열=구분(col0), B열=col1 → 1월=col1
+vc  = m + 3    # 영업일보 공급량계획 시트 열 인덱스
 
 def s(df, r, c): return safe(df, r, c) if df is not None else None
 
-# 영업일보 실적
+# ── 영업일보 실적 ──────────────────────────────────────
 RI = {'합계':7,'공동':8,'단독':9,'일반':10,'업무':11,'산업':12,'열병합':13}
 def il(k, c): return s(df_il, RI.get(k), c)
 
@@ -384,18 +405,26 @@ def il(k, c): return s(df_il, RI.get(k), c)
 순증_당실=(float(신규_당실 or 0)-float(폐전_당실 or 0)) if 신규_당실 else None
 순증_누실=(float(신규_누실 or 0)-float(폐전_누실 or 0)) if 신규_누실 else None
 
-# 계획 (GitHub new_1)
-신규_연간=s(df_n1p,15,14); 신규_당계=s(df_n1p,15,nc); 신규_누계=s(df_n1p,16,nc)
-폐전_연간=s(df_n1p,34,14); 폐전_당계=s(df_n1p,34,nc); 폐전_누계=s(df_n1p,35,nc)
+# ── 공급전 계획 (new_1) ────────────────────────────────
+신규_연간=s(df_n1p,15,14); 신규_당계=s(df_n1p,15,nc1); 신규_누계=s(df_n1p,16,nc1)
+폐전_연간=s(df_n1p,34,14); 폐전_당계=s(df_n1p,34,nc1); 폐전_누계=s(df_n1p,35,nc1)
 순증_연간=(신규_연간 or 0)-(폐전_연간 or 0)
 순증_당계=(신규_당계 or 0)-(폐전_당계 or 0)
 순증_누계=(신규_누계 or 0)-(폐전_누계 or 0)
 
-개발량_연간=(s(df_n2p,104,14) or 0)/1000
-개발량_당계=(s(df_n2p,103,nc) or 0)/1000
-개발량_누계=(s(df_n2p,105,nc) or 0)/1000
+# ── 개발량 계획 (new_2의 3_1. 개발량 계획 시트) ──────────
+# 행104(0-idx 103): 당월 계획, 열 B~M = col1~12 (1월=col1)
+# 행106(0-idx 105): 누계 계획, 동일 열
+# 행106 O열(0-idx 105, col14): 연간 계획
+_n2p_당계_raw = s(df_n2p, 103, nc)
+_n2p_누계_raw = s(df_n2p, 105, nc)
+_n2p_연간_raw = s(df_n2p, 105, 14)
 
-# 신규개발량 실적
+개발량_당계 = float(_n2p_당계_raw) / 1000 if _n2p_당계_raw else None
+개발량_누계 = float(_n2p_누계_raw) / 1000 if _n2p_누계_raw else None
+개발량_연간 = float(_n2p_연간_raw) / 1000 if _n2p_연간_raw else None
+
+# ── 신규개발량 실적 ────────────────────────────────────
 if dev_df is not None and 환산계수:
     공동_m3 = float(공동_a or 0) * 48.5
     단독_m3 = float(단독_a or 0) * 43.4
@@ -411,18 +440,20 @@ else:
 _nv = s(df_n2r, 94, nc)
 개발량_누실 = float(_nv)/1000 if _nv else 개발량_당실
 
+# ── 총공급량 ───────────────────────────────────────────
 총공_연간=s(df_n1rt,10,2)
 총공_당계=(s(df_vol,5,vc) or 0)/1000
 총공_누계=(s(df_vol,6,vc) or 0)/1000
 총공_당실_v = int(round(auto_act)) if auto_act else None
 총공_누실_v = int(round(auto_cum)) if auto_cum else None
 
-공동_p=s(df_n1p,2,nc); 단독_p=s(df_n1p,4,nc); 소계_p=(공동_p or 0)+(단독_p or 0)
-일반_p=s(df_n1p,7,nc); 업무_p=s(df_n1p,9,nc); 산업_p=s(df_n1p,11,nc)
-열병_p=s(df_n1p,13,nc); 합계_p=신규_당계
-공동_cp=s(df_n1p,3,nc); 단독_cp=s(df_n1p,5,nc); 소계_cp=(공동_cp or 0)+(단독_cp or 0)
-일반_cp=s(df_n1p,8,nc); 업무_cp=s(df_n1p,10,nc); 산업_cp=s(df_n1p,12,nc)
-열병_cp=s(df_n1p,14,nc); 합계_cp=신규_누계
+# ── 공급전 상세 계획 ───────────────────────────────────
+공동_p=s(df_n1p,2,nc1); 단독_p=s(df_n1p,4,nc1); 소계_p=(공동_p or 0)+(단독_p or 0)
+일반_p=s(df_n1p,7,nc1); 업무_p=s(df_n1p,9,nc1); 산업_p=s(df_n1p,11,nc1)
+열병_p=s(df_n1p,13,nc1); 합계_p=신규_당계
+공동_cp=s(df_n1p,3,nc1); 단독_cp=s(df_n1p,5,nc1); 소계_cp=(공동_cp or 0)+(단독_cp or 0)
+일반_cp=s(df_n1p,8,nc1); 업무_cp=s(df_n1p,10,nc1); 산업_cp=s(df_n1p,12,nc1)
+열병_cp=s(df_n1p,14,nc1); 합계_cp=신규_누계
 
 # ════════════════════════════════════════════════════
 # 표1: 공급전 및 공급량 현황
@@ -468,10 +499,11 @@ st.markdown(f"""
     <tr>
       <td style='background:#dce6f5;font-weight:700;color:#1e3a6b;text-align:center;vertical-align:middle;border:1px solid #ddd;padding:7px 10px;font-size:13px' rowspan="2">공급량<br>(GJ)</td>
       <td style='background:#eef2fa;font-weight:600;color:#333;text-align:center;vertical-align:middle;border:1px solid #ddd;padding:7px 10px;font-size:13px'>신규개발량</td>
-      <td>{n(개발량_연간)}</td><td>{n(개발량_당계)}</td>
+      <td>{n(개발량_연간) if 개발량_연간 else 입력필요}</td>
+      <td>{n(개발량_당계) if 개발량_당계 else 입력필요}</td>
       <td>{n(개발량_당실) if 개발량_당실 else 입력필요}</td>
       <td>{rate_html(개발량_당실,개발량_당계) if 개발량_당실 else n(None)}</td>
-      <td>{n(개발량_누계)}</td>
+      <td>{n(개발량_누계) if 개발량_누계 else 입력필요}</td>
       <td>{n(개발량_누실) if 개발량_누실 else n(None)}</td>
       <td>{rate_html(개발량_누실,개발량_누계) if 개발량_누실 else n(None)}</td>
     </tr>
