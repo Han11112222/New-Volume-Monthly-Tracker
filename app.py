@@ -409,7 +409,7 @@ _n2p_누계_raw = s(df_n2p, 105, nc)
 _n2p_연간_raw = s(df_n2p, 105, 14)
 개발량_당계 = float(_n2p_당계_raw) / 1000 if _n2p_당계_raw else None
 개발량_누계 = float(_n2p_누계_raw) / 1000 if _n2p_누계_raw else None
-개발량_연간 = 352553.515  # 352,553,515 MJ → 연간 고정값
+개발량_연간 = 383816.961  # 383,816,961 MJ → 연간 고정값
 
 if dev_df is not None and 환산계수:
     공동_m3 = float(공동_a or 0) * 48.5
