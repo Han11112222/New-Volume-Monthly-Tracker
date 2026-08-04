@@ -368,8 +368,11 @@ df_n2p  = gh.get("new_2",{}).get("3_1. 개발량 계획")
 df_n2r  = gh.get("new_2",{}).get("3_2. 개발량 실적")
 
 m   = mo - 1
-nc1 = m + 2    # new_1 시트 당월열
-nc  = m + 1    # new_2 3_1시트 당월열 (B=1월=col1)
+nc1 = m + 2    # new_1 시트 당월열 (기존 유지)
+# new_2 시트 열 구조:
+#   A(col0)=구분, B(col1)=1월, C(col2)=2월 ... I(col8)=7월 ... N(col13)=12월, O(col14)=연간
+#   → 당월열 = mo + 1  (예: 7월 → col8 = 7+1)
+nc  = mo + 1   # new_2 3_1/3_2 시트 당월열
 vc  = m + 3    # 영업일보 공급량계획 시트 열
 
 def s(df, r, c): return safe(df, r, c) if df is not None else None
@@ -395,9 +398,15 @@ def il(k, c): return s(df_il, RI.get(k), c)
 
 # 개발량 계획: new_2 3_1시트
 # 행104(idx 103)=당월계획, 행106(idx 105)=누계계획, 행106 O열(idx 105, col14)=연간계획
-_n2p_당계_raw = s(df_n2p, 103, nc)   # 행104(0-idx 103): 당월 계획
-_n2p_누계_raw = s(df_n2p, 104, nc)   # 행105(0-idx 104): 누계 계획
-_n2p_연간_raw = s(df_n2p, 104, 14)   # 행105 O열(0-idx 104, col14): 연간 계획
+# ── 개발량 계획: new_2 3_1. 개발량 계획 시트 ─────────────
+# 열 구조: A(col0)=구분, B(col1)=1월 ... I(col8)=7월 ... N(col13)=12월, O(col14)=연간
+# nc = mo + 1 (7월=I=col8=7+1)
+# 행104(0-idx 103): 당월 계획
+# 행106(0-idx 105): 누계 계획
+# 행106 O열(0-idx 105, col14): 연간 계획 = 383,816,961 MJ
+_n2p_당계_raw = s(df_n2p, 103, nc)
+_n2p_누계_raw = s(df_n2p, 105, nc)
+_n2p_연간_raw = s(df_n2p, 105, 14)
 개발량_당계 = float(_n2p_당계_raw) / 1000 if _n2p_당계_raw else None
 개발량_누계 = float(_n2p_누계_raw) / 1000 if _n2p_누계_raw else None
 개발량_연간 = float(_n2p_연간_raw) / 1000 if _n2p_연간_raw else None
@@ -414,8 +423,16 @@ if dev_df is not None and 환산계수:
 else:
     개발량_당실 = None
 
-_nv = s(df_n2r, 94, nc)
-개발량_누실 = float(_nv)/1000 if _nv else 개발량_당실
+# ── 개발량 실적: new_2 3_2. 개발량 실적 시트 ─────────────
+# 이미지1 기준: 당월실적=행93(0-idx 92), 누계실적=행95(0-idx 94)
+# 당월실적: dev_df 기반 계산값 우선, 없으면 3_2 시트값 사용
+_nv_당실 = s(df_n2r, 92, nc)
+_nv_누실 = s(df_n2r, 94, nc)
+개발량_당실_from_n2r = float(_nv_당실) / 1000 if _nv_당실 else None
+개발량_누실 = float(_nv_누실) / 1000 if _nv_누실 else None
+# 당월실적 최종: dev_df 계산값 우선, 없으면 3_2 시트값
+if 개발량_당실 is None:
+    개발량_당실 = 개발량_당실_from_n2r
 
 총공_연간=s(df_n1rt,10,2)
 총공_당계=(s(df_vol,5,vc) or 0)/1000
