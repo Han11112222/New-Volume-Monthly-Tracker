@@ -102,9 +102,10 @@ API_BASE  = "https://api.github.com/repos/Han11112222/New-Volume-Monthly-Tracker
 GSHEET_URL = ("https://docs.google.com/spreadsheets/d/"
               "13HrIz6OytYDykXeXzXJ02I6XbaKin1YaKBoO2kBd6Bs/export?format=csv&gid=0")
 
+# ── [수정] new_1, new_2 모두 동적으로 탐색 ──────────────
 @st.cache_data(ttl=3600)
-def get_latest_new2_fname():
-    """GitHub 저장소에서 new_2로 시작하는 파일 중 가장 최신 파일명 반환"""
+def get_latest_files():
+    """GitHub 저장소에서 new_1, new_2 최신 파일명을 동적으로 반환"""
     try:
         import json
         req = urllib.request.Request(
@@ -113,24 +114,28 @@ def get_latest_new2_fname():
         )
         with urllib.request.urlopen(req, timeout=10) as resp:
             files = json.loads(resp.read().decode())
-        # new_2로 시작하는 파일만 필터
-        new2_files = [f['name'] for f in files if f['name'].startswith('new_2')]
-        if not new2_files:
-            return None, "new_2 파일을 찾을 수 없습니다."
-        # 이름 기준 내림차순 정렬 → 가장 최신 파일
-        new2_files.sort(reverse=True)
-        return new2_files[0], None
+        names = [f['name'] for f in files]
+
+        # new_1 최신 파일 (이름 내림차순 → 가장 최신)
+        new1_files = sorted([nm for nm in names if nm.startswith('new_1')], reverse=True)
+        new1_fname = new1_files[0] if new1_files else None
+
+        # new_2 최신 파일
+        new2_files = sorted([nm for nm in names if nm.startswith('new_2')], reverse=True)
+        new2_fname = new2_files[0] if new2_files else None
+
+        return new1_fname, new2_fname, None
     except Exception as e:
-        return None, str(e)
+        return None, None, str(e)
 
 # ── GitHub 파일 로드 ──────────────────────────────────
 @st.cache_data(ttl=3600)
-def load_github_plans(new2_fname):
+def load_github_plans(new1_fname, new2_fname):
     """new_1(계획), new_2(계획/실적) GitHub에서 로드"""
     errors, result = [], {}
     files = {
         "new_1": {
-            "fname": "new_1.(작성용)6월 영업현황 보고(20260626).xlsx",
+            "fname": new1_fname,
             "sheets": ["3_1. 개발량 계획", "(회의자료 입력용)공급전 및 공급량 현황"]
         },
         "new_2": {
@@ -139,6 +144,9 @@ def load_github_plans(new2_fname):
         }
     }
     for key, info in files.items():
+        if not info["fname"]:
+            errors.append(f"{key}: 파일 없음")
+            continue
         try:
             url = f"{BASE}/{urllib.parse.quote(info['fname'])}"
             buf = io.BytesIO(urllib.request.urlopen(url, timeout=15).read())
@@ -221,7 +229,6 @@ with st.sidebar:
     st.markdown("## 📋 보고서 설정")
     st.markdown("---")
 
-    # 보고 연도/월 선택
     sel_year  = st.number_input("보고 연도", value=2026, step=1, format="%d")
     sel_month = st.selectbox("보고 월", list(range(1,13)), index=5)
 
@@ -229,12 +236,10 @@ with st.sidebar:
     st.markdown("### 📁 파일 선택")
     st.markdown("**GitHub에서 자동 로드** 또는 직접 업로드")
 
-    # 파일명 패턴
     yr = int(sel_year)
     mo = sel_month
-    ym = f"{yr}{mo:02d}"  # 예: 202606
+    ym = f"{yr}{mo:02d}"
 
-    # 영업일보 선택
     st.markdown(f"**① 영업일보**")
     xlsm_mode = st.radio("", ["GitHub 자동", "직접 업로드"], key="xlsm_mode", horizontal=True, label_visibility="collapsed")
     f_xlsm_upload = None
@@ -260,10 +265,13 @@ with st.sidebar:
 # ════════════════════════════════════════════════════
 # 데이터 로드
 # ════════════════════════════════════════════════════
-# 1. GitHub 계획 데이터
+# 1. GitHub 계획 데이터 (new_1, new_2 모두 동적 탐색)
 with st.spinner("📡 GitHub 계획 데이터 로드 중..."):
-    new2_fname, new2_err = get_latest_new2_fname()
-    gh, gh_err = load_github_plans(new2_fname) if new2_fname else ({}, [new2_err or "new_2 파일 없음"])
+    new1_fname, new2_fname, file_err = get_latest_files()
+    if new1_fname and new2_fname:
+        gh, gh_err = load_github_plans(new1_fname, new2_fname)
+    else:
+        gh, gh_err = {}, [file_err or "new_1/new_2 파일을 찾을 수 없습니다."]
     mdf, gs_err = load_gsheet()
 
 auto_act = get_gj(mdf, yr, mo)
@@ -296,13 +304,14 @@ else:
 st.markdown(f'<div class="report-header">📊 마케팅본부 _ {yr}년 {mo}월 영업현황 보고서</div>',
             unsafe_allow_html=True)
 
-# 로드 상태 표시 (작게)
+# 로드 상태 표시
 col_s1, col_s2, col_s3 = st.columns(3)
 with col_s1:
     if gh_err: st.warning("⚠️ GitHub 계획 로드 실패")
     else:
         st.success("✅ 계획 데이터 로드 완료")
-        if new2_fname: st.caption(f"📄 {new2_fname}")
+        if new1_fname: st.caption(f"📄 new_1: {new1_fname}")
+        if new2_fname: st.caption(f"📄 new_2: {new2_fname}")
 with col_s2:
     if xlsm_bytes: st.success(f"✅ 영업일보: `{xlsm_name}`")
     else: st.warning(f"⚠️ 영업일보 없음: `{xlsm_github_name}`")
@@ -358,7 +367,7 @@ def il(k, c): return s(df_il, RI.get(k), c)
 개발량_당계=(s(df_n2p,103,nc) or 0)/1000
 개발량_누계=(s(df_n2p,105,nc) or 0)/1000
 
-# 신규개발량 실적: 2개 파일 + 구글시트 환산계수로 계산
+# 신규개발량 실적
 if dev_df is not None and 환산계수:
     공동_m3 = float(공동_a or 0) * 48.5
     단독_m3 = float(단독_a or 0) * 43.4
@@ -371,8 +380,6 @@ if dev_df is not None and 환산계수:
 else:
     개발량_당실 = None
 
-# 누계실적: new_2 row94(누적) col(nc) = 1월~당월 전체 누적
-# row94 col(nc)에 당월까지의 누적값이 직접 들어있음
 _nv = s(df_n2r, 94, nc)
 개발량_누실 = float(_nv)/1000 if _nv else 개발량_당실
 
@@ -509,7 +516,7 @@ st.markdown(f"""
 </table>
 <p style="font-size:12px;color:#555;">※ (괄호)는 누계 기준임.</p>""", unsafe_allow_html=True)
 
-# ── 산업용 신규 업체 ──────────────────────────────────
+# ── 산업용/업무용 신규 업체 ───────────────────────────
 ind = biz = None
 if dev_df is not None:
     ind = dev_df[dev_df['용도'].str.contains('산업', na=False)].copy()
@@ -620,7 +627,7 @@ def make_excel(yr, mo, rows1, rows2, ind_df, biz_df):
         hc(ws,r,c,v,sf,hft)
     r+=1
 
-    def pct_str2(v): 
+    def pct_str2(v):
         try: return f"{float(v):.1f}%" if v is not None else "-"
         except: return "-"
 
