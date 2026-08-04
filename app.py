@@ -102,26 +102,18 @@ GSHEET_URL = ("https://docs.google.com/spreadsheets/d/"
               "13HrIz6OytYDykXeXzXJ02I6XbaKin1YaKBoO2kBd6Bs/export?format=csv&gid=0")
 
 def try_load_url(url):
-    """URL에서 바이트 로드, 실패시 None 반환"""
     try:
         req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
         return io.BytesIO(urllib.request.urlopen(req, timeout=15).read()), None
     except Exception as e:
         return None, str(e)
 
-# ── [핵심 수정] GitHub API 없이 파일명 직접 추론 ─────────
-# new_1: 저장소에 1개만 존재 → 고정 파일명 패턴으로 탐색
-# new_2: (통합)신규개발량(YYYYMM)_당월명 확정공급급... 형태
-# → raw URL로 직접 시도하는 방식으로 변경
-
+# ── new_1 파일 탐색 (raw URL 직접 시도) ──────────────
 @st.cache_data(ttl=300)
 def find_new1_fname():
-    """new_1 파일명을 후보 패턴으로 직접 시도해서 찾기"""
-    # 저장소에 있는 new_1 파일명 패턴들을 직접 시도
     candidates = [
         "new_1.(작성용)6월 영업현황 보고(20260626).xlsx",
         "new_1.(작성용)7월 영업현황 보고(20260726).xlsx",
-        "new_1.(작성용)5월 영업현황 보고(20260526).xlsx",
         "new_1.(작성용)8월 영업현황 보고(20260826).xlsx",
         "new_1.(작성용)9월 영업현황 보고(20260926).xlsx",
         "new_1.(작성용)10월 영업현황 보고(20261026).xlsx",
@@ -131,6 +123,7 @@ def find_new1_fname():
         "new_1.(작성용)2월 영업현황 보고(20260226).xlsx",
         "new_1.(작성용)3월 영업현황 보고(20260326).xlsx",
         "new_1.(작성용)4월 영업현황 보고(20260426).xlsx",
+        "new_1.(작성용)5월 영업현황 보고(20260526).xlsx",
     ]
     for fname in candidates:
         url = f"{BASE}/{urllib.parse.quote(fname)}"
@@ -139,38 +132,32 @@ def find_new1_fname():
             return fname, buf, None
     return None, None, "new_1 파일을 찾을 수 없습니다."
 
+# ── new_2 파일 탐색 ────────────────────────────────────
+# 실제 파일명 패턴: new_2.(통합)신규개발량(YYYYMM)_N월 확정공급급량.xlsx
+# → "확정공급급량" (급이 두 번) 이 실제 파일명임을 확인
 @st.cache_data(ttl=300)
 def find_new2_fname(ym):
-    """new_2 파일명을 ym 기반으로 직접 시도해서 찾기"""
     mo_names = {
         '01':'1월','02':'2월','03':'3월','04':'4월','05':'5월','06':'6월',
         '07':'7월','08':'8월','09':'9월','10':'10월','11':'11월','12':'12월'
     }
-    mo_str = mo_names.get(ym[4:], '')
-    # 가능한 파일명 패턴 (당월명 확정공급급, 확정공급량 등 다양)
-    suffixes = ["확정공급급량.xlsx", "확정공급량.xlsx", "확정공급.xlsx"]
-    prefixes = [
-        f"new_2.(통합)신규개발량({ym})_{mo_str} ",
-        f"new_2.(통합)신규개발량({ym})_",
-    ]
-    for prefix in prefixes:
-        for suffix in suffixes:
-            fname = prefix + suffix
-            url = f"{BASE}/{urllib.parse.quote(fname)}"
-            buf, err = try_load_url(url)
-            if buf:
-                return fname, buf, None
+    yr_int = int(ym[:4])
+    mo_int = int(ym[4:])
 
-    # 패턴 매칭 실패 시: 전달(이전 달) ym도 시도
-    # (new_2 파일명에 전달 ym이 쓰이는 경우 대비)
-    yr_int = int(ym[:4]); mo_int = int(ym[4:])
+    # 시도할 (파일내 ym, 월명) 조합: 당월 ym + 이전달 ym 모두 시도
+    ym_candidates = []
+    ym_candidates.append((ym, mo_names.get(ym[4:], '')))
     prev_mo = mo_int - 1 if mo_int > 1 else 12
     prev_yr = yr_int if mo_int > 1 else yr_int - 1
     prev_ym = f"{prev_yr}{prev_mo:02d}"
-    prev_mo_str = mo_names.get(f"{prev_mo:02d}", '')
-    for suffix in suffixes:
-        for label in [f"{mo_str} ", f"{prev_mo_str} ", ""]:
-            fname = f"new_2.(통합)신규개발량({prev_ym})_{label}{suffix}"
+    ym_candidates.append((prev_ym, mo_names.get(f"{prev_mo:02d}", '')))
+
+    # 실제 확인된 파일명 패턴 (확정공급급량 / 확정공급량 두 가지 모두 시도)
+    suffixes = ["확정공급급량.xlsx", "확정공급량.xlsx"]
+
+    for file_ym, mo_str in ym_candidates:
+        for suffix in suffixes:
+            fname = f"new_2.(통합)신규개발량({file_ym})_{mo_str} {suffix}"
             url = f"{BASE}/{urllib.parse.quote(fname)}"
             buf, err = try_load_url(url)
             if buf:
@@ -185,7 +172,6 @@ def load_github_file(fname):
 
 @st.cache_data(ttl=300)
 def load_excel_sheets(raw_bytes, fname, sheet_list):
-    """바이트에서 여러 시트 로드"""
     result = {}
     for sh in sheet_list:
         try:
@@ -296,26 +282,21 @@ with st.sidebar:
 # 데이터 로드
 # ════════════════════════════════════════════════════
 with st.spinner("📡 GitHub 계획 데이터 로드 중..."):
-    # new_1: GitHub API 없이 raw URL 직접 시도
     new1_fname, new1_buf, new1_err = find_new1_fname()
-    # new_2: ym 기반으로 raw URL 직접 시도
     new2_fname, new2_buf, new2_err = find_new2_fname(ym)
     mdf, gs_err = load_gsheet()
 
-# new_1 시트 로드
 gh = {}
 gh_err = []
 if new1_buf:
     raw1 = new1_buf.read()
-    sheets1 = load_excel_sheets(raw1, new1_fname, ["3_1. 개발량 계획", "(회의자료 입력용)공급전 및 공급량 현황"])
-    gh["new_1"] = sheets1
+    gh["new_1"] = load_excel_sheets(raw1, new1_fname, ["3_1. 개발량 계획", "(회의자료 입력용)공급전 및 공급량 현황"])
 else:
     gh_err.append(f"new_1: {new1_err}")
 
 if new2_buf:
     raw2 = new2_buf.read()
-    sheets2 = load_excel_sheets(raw2, new2_fname, ["3_1. 개발량 계획", "3_2. 개발량 실적"])
-    gh["new_2"] = sheets2
+    gh["new_2"] = load_excel_sheets(raw2, new2_fname, ["3_1. 개발량 계획", "3_2. 개발량 실적"])
 else:
     gh_err.append(f"new_2: {new2_err}")
 
