@@ -133,10 +133,11 @@ def find_new1_fname():
     return None, None, "new_1 파일을 찾을 수 없습니다."
 
 # ── new_2 파일 탐색 ──────────────────────────────────
-# 실제 파일명 패턴 확인:
-#   new_2.(통합)신규개발량(202607)_6월 확정공급급...  ← 7월 보고, 파일ym=202607, 월명=전달(6월)
-#   new_2.(통합)신규개발량(202606)_5월 확정공급급...  ← 6월 보고, 파일ym=202606, 월명=전달(5월)
-# → 규칙: 파일내 ym = 당월 ym, 월명 = 전달 월명
+# 실제 파일명 패턴 (확정):
+#   new_2.(통합)신규개발량(YYYYMM)_N월 확정공급량적용_YYYYMMDD.xlsx
+#   - 파일내 ym = 당월 ym
+#   - 월명 = 전달 월명 (mo-1)
+#   - 날짜 = 가변 (01~31 순서로 시도)
 @st.cache_data(ttl=300)
 def find_new2_fname(ym):
     mo_names = {
@@ -146,41 +147,41 @@ def find_new2_fname(ym):
     yr_int = int(ym[:4])
     mo_int = int(ym[4:])
 
-    # 전달 월명 계산
+    # 전달 월명
     prev_mo = mo_int - 1 if mo_int > 1 else 12
     prev_mo_str = mo_names.get(f"{prev_mo:02d}", '')
 
-    # 파일명 suffix 패턴 (확정공급급량 / 확정공급량 두 가지)
-    suffixes = ["확정공급급량.xlsx", "확정공급량.xlsx"]
-
-    # 1순위: 당월 ym + 전달 월명 (실제 확인된 패턴)
-    for suffix in suffixes:
-        fname = f"new_2.(통합)신규개발량({ym})_{prev_mo_str} {suffix}"
-        url = f"{BASE}/{urllib.parse.quote(fname)}"
-        buf, err = try_load_url(url)
-        if buf:
-            return fname, buf, None
-
-    # 2순위: 당월 ym + 당월 월명 (혹시 다른 달은 다를 수 있으므로 차선)
+    # 당월 월명 (예외 케이스 대비)
     mo_str = mo_names.get(ym[4:], '')
-    for suffix in suffixes:
-        fname = f"new_2.(통합)신규개발량({ym})_{mo_str} {suffix}"
-        url = f"{BASE}/{urllib.parse.quote(fname)}"
-        buf, err = try_load_url(url)
-        if buf:
-            return fname, buf, None
 
-    # 3순위: 전달 ym + 전달 월명 (이전 달 파일이 남아있는 경우)
+    # 월명 후보: 전달 우선, 당월 차선
+    mo_labels = [prev_mo_str, mo_str]
+
+    # 날짜 후보: 당월 전체 (01~31) — 역순(말일부터)으로 시도해 최신 파일 우선
+    dates = [f"{yr_int}{mo_int:02d}{d:02d}" for d in range(31, 0, -1)]
+
+    for mo_label in mo_labels:
+        for date_str in dates:
+            fname = f"new_2.(통합)신규개발량({ym})_{mo_label} 확정공급량적용_{date_str}.xlsx"
+            url = f"{BASE}/{urllib.parse.quote(fname)}"
+            buf, err = try_load_url(url)
+            if buf:
+                return fname, buf, None
+
+    # 이전달 ym도 시도 (혹시 파일내 ym이 전달인 경우 대비)
     prev_yr = yr_int if mo_int > 1 else yr_int - 1
     prev_ym = f"{prev_yr}{prev_mo:02d}"
     prev_prev_mo = prev_mo - 1 if prev_mo > 1 else 12
     prev_prev_mo_str = mo_names.get(f"{prev_prev_mo:02d}", '')
-    for suffix in suffixes:
-        fname = f"new_2.(통합)신규개발량({prev_ym})_{prev_prev_mo_str} {suffix}"
-        url = f"{BASE}/{urllib.parse.quote(fname)}"
-        buf, err = try_load_url(url)
-        if buf:
-            return fname, buf, None
+    prev_dates = [f"{prev_yr}{prev_mo:02d}{d:02d}" for d in range(31, 0, -1)]
+
+    for mo_label in [prev_prev_mo_str, prev_mo_str]:
+        for date_str in prev_dates:
+            fname = f"new_2.(통합)신규개발량({prev_ym})_{mo_label} 확정공급량적용_{date_str}.xlsx"
+            url = f"{BASE}/{urllib.parse.quote(fname)}"
+            buf, err = try_load_url(url)
+            if buf:
+                return fname, buf, None
 
     return None, None, f"new_2({ym}) 파일을 찾을 수 없습니다."
 
@@ -258,18 +259,14 @@ def parse_dev(b, fn):
 with st.sidebar:
     st.markdown("## 📋 보고서 설정")
     st.markdown("---")
-
     sel_year  = st.number_input("보고 연도", value=2026, step=1, format="%d")
     sel_month = st.selectbox("보고 월", list(range(1,13)), index=5)
-
     st.markdown("---")
     st.markdown("### 📁 파일 선택")
     st.markdown("**GitHub에서 자동 로드** 또는 직접 업로드")
-
     yr = int(sel_year)
     mo = sel_month
     ym = f"{yr}{mo:02d}"
-
     st.markdown(f"**① 영업일보**")
     xlsm_mode = st.radio("", ["GitHub 자동", "직접 업로드"], key="xlsm_mode", horizontal=True, label_visibility="collapsed")
     f_xlsm_upload = None
@@ -278,7 +275,6 @@ with st.sidebar:
         f_xlsm_upload = st.file_uploader("영업일보 파일", type=['xlsm','xlsx'], key="xlsm_up", label_visibility="collapsed")
     else:
         st.caption(f"📡 `{xlsm_github_name}`")
-
     st.markdown(f"**② 신규개발량**")
     dev_mode = st.radio("", ["GitHub 자동", "직접 업로드"], key="dev_mode", horizontal=True, label_visibility="collapsed")
     f_dev_upload = None
@@ -287,11 +283,9 @@ with st.sidebar:
         f_dev_upload = st.file_uploader("신규개발량 파일", type=['xlsx'], key="dev_up", label_visibility="collapsed")
     else:
         st.caption(f"📡 `{dev_github_name}`")
-
     st.markdown("---")
     st.markdown("### 💡 총공급량 실적")
     st.caption("구글시트에서 자동 합산됩니다.")
-
     st.markdown("---")
     if st.button("🔄 캐시 초기화 & 새로고침"):
         st.cache_data.clear()
@@ -323,22 +317,16 @@ auto_act = get_gj(mdf, yr, mo)
 auto_cum = get_gj(mdf, yr, mo, cum=True)
 환산계수  = get_환산계수(mdf, yr, mo)
 
-# 영업일보 로드
-xlsm_bytes = None
-xlsm_name  = ""
+xlsm_bytes = None; xlsm_name = ""
 if xlsm_mode == "직접 업로드" and f_xlsm_upload:
-    xlsm_bytes = f_xlsm_upload.read()
-    xlsm_name  = f_xlsm_upload.name
+    xlsm_bytes = f_xlsm_upload.read(); xlsm_name = f_xlsm_upload.name
 else:
     buf, err = load_github_file(xlsm_github_name)
     if buf: xlsm_bytes = buf.read(); xlsm_name = xlsm_github_name
 
-# 신규개발량 로드
-dev_bytes = None
-dev_name  = ""
+dev_bytes = None; dev_name = ""
 if dev_mode == "직접 업로드" and f_dev_upload:
-    dev_bytes = f_dev_upload.read()
-    dev_name  = f_dev_upload.name
+    dev_bytes = f_dev_upload.read(); dev_name = f_dev_upload.name
 else:
     buf, err = load_github_file(dev_github_name)
     if buf: dev_bytes = buf.read(); dev_name = dev_github_name
@@ -346,15 +334,13 @@ else:
 # ════════════════════════════════════════════════════
 # 메인 화면
 # ════════════════════════════════════════════════════
-st.markdown(f'<div class="report-header">📊 마케팅본부 _ {yr}년 {mo}월 영업현황 보고서</div>',
-            unsafe_allow_html=True)
+st.markdown(f'<div class="report-header">📊 마케팅본부 _ {yr}년 {mo}월 영업현황 보고서</div>', unsafe_allow_html=True)
 
 col_s1, col_s2, col_s3 = st.columns(3)
 with col_s1:
     if gh_err:
         st.warning("⚠️ GitHub 계획 일부 로드 실패")
-        for e in gh_err:
-            st.caption(f"· {e}")
+        for e in gh_err: st.caption(f"· {e}")
     else:
         st.success("✅ 계획 데이터 로드 완료")
     if new1_fname: st.caption(f"📄 new_1: {new1_fname}")
@@ -381,50 +367,41 @@ df_n1rt = gh.get("new_1",{}).get("(회의자료 입력용)공급전 및 공급�
 df_n2p  = gh.get("new_2",{}).get("3_1. 개발량 계획")
 df_n2r  = gh.get("new_2",{}).get("3_2. 개발량 실적")
 
-# ── 인덱스 계산 ────────────────────────────────────────
 m   = mo - 1
-nc1 = m + 2    # new_1 시트: A열=구분(col0), B열=col1 시작 → 1월=col2
-nc  = m + 1    # new_2 3_1시트: A열=구분(col0), B열=col1 → 1월=col1
-vc  = m + 3    # 영업일보 공급량계획 시트 열 인덱스
+nc1 = m + 2    # new_1 시트 당월열
+nc  = m + 1    # new_2 3_1시트 당월열 (B=1월=col1)
+vc  = m + 3    # 영업일보 공급량계획 시트 열
 
 def s(df, r, c): return safe(df, r, c) if df is not None else None
 
-# ── 영업일보 실적 ──────────────────────────────────────
 RI = {'합계':7,'공동':8,'단독':9,'일반':10,'업무':11,'산업':12,'열병합':13}
 def il(k, c): return s(df_il, RI.get(k), c)
 
 공동_a=il('공동',4); 단독_a=il('단독',4); 소계_a=(공동_a or 0)+(단독_a or 0)
 일반_a=il('일반',4); 업무_a=il('업무',4); 산업_a=il('산업',4)
 열병_a=il('열병합',4); 합계_a=il('합계',4); 신규_당실=합계_a
-
 공동_ca=il('공동',10); 단독_ca=il('단독',10); 소계_ca=(공동_ca or 0)+(단독_ca or 0)
 일반_ca=il('일반',10); 업무_ca=il('업무',10); 산업_ca=il('산업',10)
 열병_ca=il('열병합',10); 합계_ca=il('합계',10); 신규_누실=합계_ca
-
 폐전_당실=il('합계',5); 폐전_누실=il('합계',11)
 순증_당실=(float(신규_당실 or 0)-float(폐전_당실 or 0)) if 신규_당실 else None
 순증_누실=(float(신규_누실 or 0)-float(폐전_누실 or 0)) if 신규_누실 else None
 
-# ── 공급전 계획 (new_1) ────────────────────────────────
 신규_연간=s(df_n1p,15,14); 신규_당계=s(df_n1p,15,nc1); 신규_누계=s(df_n1p,16,nc1)
 폐전_연간=s(df_n1p,34,14); 폐전_당계=s(df_n1p,34,nc1); 폐전_누계=s(df_n1p,35,nc1)
 순증_연간=(신규_연간 or 0)-(폐전_연간 or 0)
 순증_당계=(신규_당계 or 0)-(폐전_당계 or 0)
 순증_누계=(신규_누계 or 0)-(폐전_누계 or 0)
 
-# ── 개발량 계획 (new_2의 3_1. 개발량 계획 시트) ──────────
-# 행104(0-idx 103): 당월 계획, 열 B~M = col1~12 (1월=col1)
-# 행106(0-idx 105): 누계 계획, 동일 열
-# 행106 O열(0-idx 105, col14): 연간 계획
+# 개발량 계획: new_2 3_1시트
+# 행104(idx 103)=당월계획, 행106(idx 105)=누계계획, 행106 O열(idx 105, col14)=연간계획
 _n2p_당계_raw = s(df_n2p, 103, nc)
 _n2p_누계_raw = s(df_n2p, 105, nc)
 _n2p_연간_raw = s(df_n2p, 105, 14)
-
 개발량_당계 = float(_n2p_당계_raw) / 1000 if _n2p_당계_raw else None
 개발량_누계 = float(_n2p_누계_raw) / 1000 if _n2p_누계_raw else None
 개발량_연간 = float(_n2p_연간_raw) / 1000 if _n2p_연간_raw else None
 
-# ── 신규개발량 실적 ────────────────────────────────────
 if dev_df is not None and 환산계수:
     공동_m3 = float(공동_a or 0) * 48.5
     단독_m3 = float(단독_a or 0) * 43.4
@@ -440,14 +417,12 @@ else:
 _nv = s(df_n2r, 94, nc)
 개발량_누실 = float(_nv)/1000 if _nv else 개발량_당실
 
-# ── 총공급량 ───────────────────────────────────────────
 총공_연간=s(df_n1rt,10,2)
 총공_당계=(s(df_vol,5,vc) or 0)/1000
 총공_누계=(s(df_vol,6,vc) or 0)/1000
 총공_당실_v = int(round(auto_act)) if auto_act else None
 총공_누실_v = int(round(auto_cum)) if auto_cum else None
 
-# ── 공급전 상세 계획 ───────────────────────────────────
 공동_p=s(df_n1p,2,nc1); 단독_p=s(df_n1p,4,nc1); 소계_p=(공동_p or 0)+(단독_p or 0)
 일반_p=s(df_n1p,7,nc1); 업무_p=s(df_n1p,9,nc1); 산업_p=s(df_n1p,11,nc1)
 열병_p=s(df_n1p,13,nc1); 합계_p=신규_당계
@@ -621,15 +596,12 @@ st.markdown("---")
 def make_excel(yr, mo, rows1, rows2, ind_df, biz_df):
     wb = Workbook(); ws = wb.active
     ws.title = f"{yr}년{mo}월 영업현황"
-    hf = PatternFill("solid", fgColor="1E3A6B")
-    sf = PatternFill("solid", fgColor="2D5FA8")
-    lf = PatternFill("solid", fgColor="DCE6F5")
-    nf = Font(name="맑은 고딕", size=10)
+    hf = PatternFill("solid", fgColor="1E3A6B"); sf = PatternFill("solid", fgColor="2D5FA8")
+    lf = PatternFill("solid", fgColor="DCE6F5"); nf = Font(name="맑은 고딕", size=10)
     hft= Font(name="맑은 고딕", bold=True, color="FFFFFF", size=10)
     lft= Font(name="맑은 고딕", bold=True, color="1E3A6B", size=10)
     ctr= Alignment(horizontal="center", vertical="center", wrap_text=True)
-    th = Side(style="thin", color="CCCCCC")
-    bd = Border(left=th,right=th,top=th,bottom=th)
+    th = Side(style="thin", color="CCCCCC"); bd = Border(left=th,right=th,top=th,bottom=th)
     num_fmt = '#,##0'; pct_fmt = '0.0%'
 
     def hc(ws, r, c, val, fill=None, font=None, fmt=None):
@@ -661,25 +633,19 @@ def make_excel(yr, mo, rows1, rows2, ind_df, biz_df):
             ws.merge_cells(start_row=r,start_column=1,end_row=end,end_column=1)
             hc(ws,r,1,구분1,lf,lft)
         hc(ws,r,2,구분2,PatternFill("solid",fgColor="EEF2FA"),Font(name="맑은 고딕",size=10,color="333333"))
-        hc(ws,r,3,fv(연간),None,nf,num_fmt)
-        hc(ws,r,4,fv(당계),None,nf,num_fmt)
+        hc(ws,r,3,fv(연간),None,nf,num_fmt); hc(ws,r,4,fv(당계),None,nf,num_fmt)
         hc(ws,r,5,fv(당실),None,nf,num_fmt)
-        rv = rate_val(당실,당계)
-        hc(ws,r,6,rv/100 if rv else None,None,nf,pct_fmt)
-        hc(ws,r,7,fv(누계),None,nf,num_fmt)
-        hc(ws,r,8,fv(누실),None,nf,num_fmt)
-        rv2 = rate_val(누실,누계)
-        hc(ws,r,9,rv2/100 if rv2 else None,None,nf,pct_fmt)
+        rv = rate_val(당실,당계); hc(ws,r,6,rv/100 if rv else None,None,nf,pct_fmt)
+        hc(ws,r,7,fv(누계),None,nf,num_fmt); hc(ws,r,8,fv(누실),None,nf,num_fmt)
+        rv2 = rate_val(누실,누계); hc(ws,r,9,rv2/100 if rv2 else None,None,nf,pct_fmt)
         r += 1
 
     r += 1
     ws.merge_cells(start_row=r,start_column=1,end_row=r,end_column=9)
     hc(ws,r,1,f"{mo}월 신규개발전 상세 현황 (단위: 전)",hf,hft); r+=1
     hc(ws,r,1,"구 분",hf,hft)
-    ws.merge_cells(start_row=r,start_column=2,end_row=r,end_column=4)
-    hc(ws,r,2,"주택용",hf,hft)
-    for c,v in [(5,"일반용"),(6,"업무용"),(7,"산업용"),(8,"열병합"),(9,"합계")]:
-        hc(ws,r,c,v,hf,hft)
+    ws.merge_cells(start_row=r,start_column=2,end_row=r,end_column=4); hc(ws,r,2,"주택용",hf,hft)
+    for c,v in [(5,"일반용"),(6,"업무용"),(7,"산업용"),(8,"열병합"),(9,"합계")]: hc(ws,r,c,v,hf,hft)
     r+=1
     for c,v in [(1,""),(2,"공동주택"),(3,"단독주택"),(4,"소계"),(5,""),(6,""),(7,""),(8,""),(9,"")]:
         hc(ws,r,c,v,sf,hft)
@@ -694,10 +660,7 @@ def make_excel(yr, mo, rows1, rows2, ind_df, biz_df):
         hc(ws,r,1,구분,lf,lft)
         for ci,(당월_v,누계_v) in enumerate(pairs):
             col = ci+2
-            if 구분 == "달성률":
-                val_str = pct_str2(당월_v)+"\n("+pct_str2(누계_v)+")"
-            else:
-                val_str = comma_str(당월_v)+"\n("+comma_str(누계_v)+")"
+            val_str = (pct_str2(당월_v)+"\n("+pct_str2(누계_v)+")") if 구분=="달성률" else (comma_str(당월_v)+"\n("+comma_str(누계_v)+")")
             c_obj = ws.cell(row=r,column=col,value=val_str)
             c_obj.alignment = Alignment(horizontal="center",vertical="center",wrap_text=True)
             c_obj.border = bd; c_obj.font = nf
@@ -727,10 +690,8 @@ def make_excel(yr, mo, rows1, rows2, ind_df, biz_df):
 
     r = write_co(ws,r,f"{mo}월 산업용 신규 업체 현황",ind_df)
     r = write_co(ws,r,f"{mo}월 업무용 신규 업체 현황",biz_df)
-
     for i,w in enumerate([10,14,12,12,12,12,12,12,12],1):
         ws.column_dimensions[get_column_letter(i)].width = w
-
     buf = io.BytesIO(); wb.save(buf); buf.seek(0)
     return buf.getvalue()
 
@@ -758,10 +719,8 @@ xl = make_excel(yr, mo, rows1, rows2, ind, biz)
 col_dl = st.columns([2,1,2])
 with col_dl[1]:
     st.download_button(
-        label="📥 엑셀 파일로 저장",
-        data=xl,
+        label="📥 엑셀 파일로 저장", data=xl,
         file_name=f"{yr}년{mo}월_영업현황보고.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        use_container_width=True,
-        type="primary"
+        use_container_width=True, type="primary"
     )
