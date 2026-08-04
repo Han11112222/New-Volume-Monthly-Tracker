@@ -102,8 +102,8 @@ API_BASE  = "https://api.github.com/repos/Han11112222/New-Volume-Monthly-Tracker
 GSHEET_URL = ("https://docs.google.com/spreadsheets/d/"
               "13HrIz6OytYDykXeXzXJ02I6XbaKin1YaKBoO2kBd6Bs/export?format=csv&gid=0")
 
-# ── [수정] new_1, new_2 모두 동적으로 탐색 ──────────────
-@st.cache_data(ttl=3600)
+# ── [수정] new_1, new_2 모두 동적 탐색 + 캐시 TTL 단축 ──
+@st.cache_data(ttl=60)
 def get_latest_files():
     """GitHub 저장소에서 new_1, new_2 최신 파일명을 동적으로 반환"""
     try:
@@ -116,20 +116,16 @@ def get_latest_files():
             files = json.loads(resp.read().decode())
         names = [f['name'] for f in files]
 
-        # new_1 최신 파일 (이름 내림차순 → 가장 최신)
         new1_files = sorted([nm for nm in names if nm.startswith('new_1')], reverse=True)
-        new1_fname = new1_files[0] if new1_files else None
-
-        # new_2 최신 파일
         new2_files = sorted([nm for nm in names if nm.startswith('new_2')], reverse=True)
+        new1_fname = new1_files[0] if new1_files else None
         new2_fname = new2_files[0] if new2_files else None
 
-        return new1_fname, new2_fname, None
+        return new1_fname, new2_fname, names, None
     except Exception as e:
-        return None, None, str(e)
+        return None, None, [], str(e)
 
-# ── GitHub 파일 로드 ──────────────────────────────────
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=60)
 def load_github_plans(new1_fname, new2_fname):
     """new_1(계획), new_2(계획/실적) GitHub에서 로드"""
     errors, result = [], {}
@@ -160,7 +156,7 @@ def load_github_plans(new1_fname, new2_fname):
             errors.append(f"{key}: {e}")
     return result, errors
 
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=60)
 def load_github_file(fname):
     """GitHub에서 특정 파일 로드"""
     try:
@@ -262,12 +258,17 @@ with st.sidebar:
     st.markdown("### 💡 총공급량 실적")
     st.caption("구글시트에서 자동 합산됩니다.")
 
+    # 캐시 초기화 버튼
+    st.markdown("---")
+    if st.button("🔄 캐시 초기화 & 새로고침"):
+        st.cache_data.clear()
+        st.rerun()
+
 # ════════════════════════════════════════════════════
 # 데이터 로드
 # ════════════════════════════════════════════════════
-# 1. GitHub 계획 데이터 (new_1, new_2 모두 동적 탐색)
 with st.spinner("📡 GitHub 계획 데이터 로드 중..."):
-    new1_fname, new2_fname, file_err = get_latest_files()
+    new1_fname, new2_fname, all_names, file_err = get_latest_files()
     if new1_fname and new2_fname:
         gh, gh_err = load_github_plans(new1_fname, new2_fname)
     else:
@@ -278,7 +279,7 @@ auto_act = get_gj(mdf, yr, mo)
 auto_cum = get_gj(mdf, yr, mo, cum=True)
 환산계수  = get_환산계수(mdf, yr, mo)
 
-# 2. 영업일보 로드
+# 영업일보 로드
 xlsm_bytes = None
 xlsm_name  = ""
 if xlsm_mode == "직접 업로드" and f_xlsm_upload:
@@ -288,7 +289,7 @@ else:
     buf, err = load_github_file(xlsm_github_name)
     if buf: xlsm_bytes = buf.read(); xlsm_name = xlsm_github_name
 
-# 3. 신규개발량 로드
+# 신규개발량 로드
 dev_bytes = None
 dev_name  = ""
 if dev_mode == "직접 업로드" and f_dev_upload:
@@ -307,11 +308,21 @@ st.markdown(f'<div class="report-header">📊 마케팅본부 _ {yr}년 {mo}월 
 # 로드 상태 표시
 col_s1, col_s2, col_s3 = st.columns(3)
 with col_s1:
-    if gh_err: st.warning("⚠️ GitHub 계획 로드 실패")
+    if gh_err:
+        st.warning("⚠️ GitHub 계획 로드 실패")
+        # [추가] 실제 오류 내용 + 탐지 파일 목록 표시
+        for e in gh_err:
+            st.caption(f"오류: {e}")
+        st.caption(f"탐지된 new_1: `{new1_fname}`")
+        st.caption(f"탐지된 new_2: `{new2_fname}`")
+        if all_names:
+            st.caption("저장소 전체 파일 목록:")
+            for nm in all_names:
+                st.caption(f"  · {nm}")
     else:
         st.success("✅ 계획 데이터 로드 완료")
-        if new1_fname: st.caption(f"📄 new_1: {new1_fname}")
-        if new2_fname: st.caption(f"📄 new_2: {new2_fname}")
+        st.caption(f"📄 new_1: {new1_fname}")
+        st.caption(f"📄 new_2: {new2_fname}")
 with col_s2:
     if xlsm_bytes: st.success(f"✅ 영업일보: `{xlsm_name}`")
     else: st.warning(f"⚠️ 영업일보 없음: `{xlsm_github_name}`")
