@@ -395,9 +395,9 @@ def il(k, c): return s(df_il, RI.get(k), c)
 
 # 개발량 계획: new_2 3_1시트
 # 행104(idx 103)=당월계획, 행106(idx 105)=누계계획, 행106 O열(idx 105, col14)=연간계획
-_n2p_당계_raw = s(df_n2p, 103, nc)
-_n2p_누계_raw = s(df_n2p, 105, nc)
-_n2p_연간_raw = s(df_n2p, 105, 14)
+_n2p_당계_raw = s(df_n2p, 103, nc)   # 행104(0-idx 103): 당월 계획
+_n2p_누계_raw = s(df_n2p, 104, nc)   # 행105(0-idx 104): 누계 계획
+_n2p_연간_raw = s(df_n2p, 104, 14)   # 행105 O열(0-idx 104, col14): 연간 계획
 개발량_당계 = float(_n2p_당계_raw) / 1000 if _n2p_당계_raw else None
 개발량_누계 = float(_n2p_누계_raw) / 1000 if _n2p_누계_raw else None
 개발량_연간 = float(_n2p_연간_raw) / 1000 if _n2p_연간_raw else None
